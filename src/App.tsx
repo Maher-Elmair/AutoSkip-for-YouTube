@@ -1,36 +1,47 @@
-import { useState } from 'react'
-import viteLogo from '/vite.svg'
-import './App.css'
-import { Button } from "@/components/ui/button"
+import "./App.css";
+import { LanguageSelector } from "@/components/shared/LanguageSelector";
+import { ThemeToggle } from "@/components/shared/ThemeToggle";
+import { Card } from "@/components/ui/card";
+import { motion } from "framer-motion";
+import { useTranslation } from "react-i18next";
+import { Title } from "@/components/shared/Title";
 
+const itemVariants = {
+  hidden: { y: 20, opacity: 0 },
+  visible: {
+    y: 0,
+    opacity: 1,
+  },
+};
 
 function App() {
-  const [count, setCount] = useState(0)
+  const { t, i18n } = useTranslation();
+  const isRTL = i18n.language === "ar";
 
   return (
-    <>
-      <div className='m-auto flex w-fit'>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src='../public/assets/react.svg' className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <Button className='mb-4' onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </Button>
-        <p >
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <Card className="w-md bg-background">
+      {/* Header */}
+      <header
+        className={`flex items-center justify-between px-6 ${
+          isRTL ? "flex-row-reverse" : ""
+        }`}
+      >
+        <Title />
+        <ThemeToggle />
+      </header>
+      {/* Main - Hero Section */}
+      <main>
+        <motion.h1
+          variants={itemVariants}
+          className="text-3xl pb-6 font-bold text-foreground text-center"
+        >
+          {t("settings")}
+        </motion.h1>
+        {/* Section : Language Selection */}
+        <LanguageSelector />
+      </main>
+    </Card>
+  );
 }
 
-export default App
+export default App;

@@ -1,7 +1,13 @@
 {
-  "title": "AutoSkip for YouTube",
+  "title": "AutoSkip for YouTube", 
   "settings": "Settings",
   "language": "Language",
   "english": "English",
-  "arabic": "Arabic"
+  "arabic": "Arabic",
+  "enableWatcher": "AutoSkip Watcher",
+  "enableWatcherDesc": "Automatically clicks the 'Skip' button when it appears in YouTube videos - does not remove ads",
+  "enabled": "Enabled", 
+  "disabled": "Disabled",
+  "active": "Active",
+  "inactive": "Inactive"
 }

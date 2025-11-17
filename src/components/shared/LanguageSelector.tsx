@@ -1,36 +1,28 @@
-import { motion } from 'framer-motion';
-import { Card,  } from '@/components/ui/card';
-import { Languages } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { motion } from "framer-motion";
+import { Card } from "@/components/ui/card";
+import { Languages } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { containerVariants, itemVariants } from "@/utils/variants";
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
+interface LanguageSelectorProps {
+  isRTL: boolean;
+  currentLanguage: string;
+  t: (key: string) => string;
+  onChangeLanguage: (lng: string) => void;
+}
 
-const itemVariants = {
-  hidden: { y: 20, opacity: 0 },
-  visible: {
-    y: 0,
-    opacity: 1
-  }
-};
-
-export function LanguageSelector() {
-  const { t, i18n } = useTranslation();
-  
-  const isRTL = i18n.language === 'ar';
-  const currentLanguage = i18n.language;
-
-  const changeLanguage = (lng: string) => {
-    i18n.changeLanguage(lng);
-  };
+const LanguageSelector: React.FC<LanguageSelectorProps> = ({
+  isRTL,
+  currentLanguage,
+  t,
+  onChangeLanguage,
+}) => {
   return (
     <motion.div
       variants={containerVariants}
@@ -40,11 +32,15 @@ export function LanguageSelector() {
     >
       <motion.div variants={itemVariants}>
         <motion.div
-          whileHover={{ y: -2, boxShadow: '0 10px 15px rgba(0,0,0,0.1)' }}
+          whileHover={{ y: -2, boxShadow: "0 10px 15px rgba(0,0,0,0.1)" }}
           transition={{ duration: 0.2 }}
         >
           <Card className="p-6 shadow-md transition-all duration-300 bg-card border-border">
-            <div className={`flex items-center gap-2.5 mb-3 ${isRTL ? 'flex-row-reverse' : ''}`}>
+            <div
+              className={`flex items-center gap-2.5 mb-3 ${
+                isRTL ? "flex-row-reverse" : ""
+              }`}
+            >
               <motion.div
                 whileHover={{ rotate: 180 }}
                 transition={{ duration: 0.4 }}
@@ -52,19 +48,25 @@ export function LanguageSelector() {
                 <Languages className="w-5 h-5 text-primary" />
               </motion.div>
               <label className="text-base text-foreground">
-                {t('language')}
+                {t("language")}
               </label>
             </div>
-            <Select value={currentLanguage} onValueChange={changeLanguage}>
+            <Select value={currentLanguage} onValueChange={onChangeLanguage}>
               <SelectTrigger className="w-full h-11 bg-input text-foreground border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-popover border-border text-foreground">
-                <SelectItem value="en" className="focus:bg-accent focus:text-accent-foreground">
-                  {t('english')}
+                <SelectItem
+                  value="en"
+                  className="focus:bg-accent focus:text-accent-foreground"
+                >
+                  {t("english")}
                 </SelectItem>
-                <SelectItem value="ar" className="focus:bg-accent focus:text-accent-foreground">
-                  {t('arabic')}
+                <SelectItem
+                  value="ar"
+                  className="focus:bg-accent focus:text-accent-foreground"
+                >
+                  {t("arabic")}
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -73,4 +75,5 @@ export function LanguageSelector() {
       </motion.div>
     </motion.div>
   );
-}
+};
+export default LanguageSelector;

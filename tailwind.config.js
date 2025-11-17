@@ -16,16 +16,18 @@ module.exports = {
         popover: 'var(--popover)',
         'popover-foreground': 'var(--popover-foreground)',
         primary: 'var(--primary)',
-        'primary-foreground': 'var(--primary-foreground): var(--primary-hover)',
+        'primary-foreground': 'var(--primary-foreground)',
+        'primary-hover': 'var(--primary-hover)',
         secondary: 'var(--secondary)',
         'secondary-foreground': 'var(--secondary-foreground)',
         muted: 'var(--muted)',
         'muted-foreground': 'var(--muted-foreground)',
         accent: 'var(--accent)',
-        'accent-foreground': 'var(--accent-foreground): var(--accent-hover)',
+        'accent-foreground': 'var(--accent-foreground)',
+        'accent-hover': 'var(--accent-hover)',
         destructive: 'var(--destructive)',
         border: 'var(--border)',
-        button:' var(--button)',
+        button: 'var(--button)',
         input: 'var(--input)',
         ring: 'var(--ring)',
         
@@ -35,23 +37,7 @@ module.exports = {
         'text-tertiary': 'var(--text-tertiary)',
         'text-red': 'var(--text-red)',
         'text-blue': 'var(--text-blue)',
-        'text-disabled': 'var(--text-disabled)',
-        
-        // YouTube base colors for special usage
-        youtube: {
-          red: {
-            50: '#FFE5E5',
-            100: '#FFB8B8',
-            200: '#FF8A8A',
-            300: '#FF5C5C',
-            400: '#FF2E2E',
-            500: '#FF0000',
-            600: '#CC0000',
-            700: '#990000',
-            800: '#660000',
-            900: '#330000'
-          }
-        }
+        'text-disabled': 'var(--text-disabled)'
       },
       
       // Custom animations

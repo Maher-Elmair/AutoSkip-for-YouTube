@@ -1,11 +1,12 @@
-import { useTranslation } from 'react-i18next';
 import { motion } from "framer-motion";
 import { Play } from "lucide-react";
 
-export function Title() {
-  const { t, i18n } = useTranslation();
-  const isRTL = i18n.language === 'ar';
+interface TitleProps {
+  isRTL: boolean;
+  t: (key: string) => string;
+}
 
+export function Title({ isRTL, t }: TitleProps) {
   return (
     <div className={`flex items-center justify-between ${isRTL ? 'flex-row-reverse' : ''}`}>
       <motion.div

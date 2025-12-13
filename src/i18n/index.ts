@@ -14,6 +14,15 @@ i18n
     interpolation: {
       escapeValue: false, // React already protects from XSS
     },
+    // Fix for Select component showing empty on first load
+    // Browser returns regional language codes (en-US) but our app expects base codes (en)
+    detection: {
+      // Normalize language codes by taking only the primary part
+      // This converts codes like 'en-US' to 'en' and 'ar-SA' to 'ar'
+      convertDetectedLanguage: (lng) => {
+        return lng.split("-")[0];
+      },
+    },
     backend: {
       loadPath: '/locales/{{lng}}/{{ns}}.json', // path to translation files
     },

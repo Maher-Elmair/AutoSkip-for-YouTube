@@ -1,73 +1,71 @@
-# React + TypeScript + Vite
+# YouTube Auto Skip Extension
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A privacy-first browser extension that automatically clicks the “Skip Ads” button on YouTube as soon as it becomes available. The experience is powered by **Vite**, **React**, **TypeScript**, **Tailwind CSS**, **shadcn/ui**, **lucide-react**, and **i18next**.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- 🚀 Detects and clicks the official “Skip Ads” button without blocking or muting ads
+- ⚡ Lightweight content script with smart DOM observers and retry logic
+- 🎛️ Modern popup UI with shadcn/ui + Tailwind CSS, theme switcher, and bilingual copy
+- 🌐 Arabic/English support via i18next
+- 🧠 Persists watcher state through the background service worker (Chrome/Brave/Firefox sync storage)
+- 🔒 Runs completely on-device—no analytics and no network calls
 
-## React Compiler
+## Supported Browsers
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Google Chrome
+- Brave Browser
+- Mozilla Firefox
 
-## Expanding the ESLint configuration
+## Installation
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Chrome / Brave
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+1. Run `npm install && npm run build`.
+2. You can now either load the project root (the root-level `manifest.json` points Chrome to the compiled files) or load the generated `dist` folder directly.
+3. Open `chrome://extensions/` and enable **Developer mode**.
+4. Click **Load unpacked** and select the folder you prefer (`.` or `dist`).
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Firefox
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+1. Run `npm install && npm run build`.
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on…** and choose the `manifest.json` file inside the `dist` folder.
+
+## Development
+
+### Prerequisites
+
+- Node.js (v18+)
+- npm
+
+### Setup
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Run the popup in development mode
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+### Build the complete extension
+
+```bash
+npm run build
+```
+
+This command bundles the popup UI, generates `content.js` and `background.js`, copies translations/icons, and produces a ready-to-load `dist` directory for every supported browser. The repository root stays loadable in Chrome because the top-level `manifest.json` references those built assets.
+
+## Key Files
+
+- `src/App.tsx` – React popup with watcher toggle, theming, and localization.
+- `src/hooks/useWatcherSetting.ts` – Shared hook that syncs the UI with extension storage.
+- `src/utils/watcherStorage.ts` – Safe wrapper around `chrome.storage` with dev fallbacks.
+- `src/extension/content.ts` – Content script that detects YouTube skip buttons and simulates human clicks.
+- `src/extension/background.ts` – Background service worker that seeds defaults and exposes lightweight messaging.
+- `public/manifest.json` – Manifest copied into `dist` during builds.
+- `manifest.json` – Root-level manifest that mirrors the one in `dist` so the repo root is loadable for quick testing.
+- `scripts/generate-icons.ps1` – Utility to regenerate the PNG icons shipped in `public/icons`.

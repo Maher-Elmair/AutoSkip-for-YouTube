@@ -13,6 +13,7 @@ import {
 interface WatcherToggleCardProps {
   watcherEnabled: boolean;
   setWatcherEnabled: (enabled: boolean) => void;
+  isLoading: boolean;
   currentLanguage: string;
   isRTL: boolean;
   t: (key: string) => string;
@@ -21,6 +22,7 @@ interface WatcherToggleCardProps {
 const WatcherToggleCard: React.FC<WatcherToggleCardProps> = ({
   watcherEnabled,
   setWatcherEnabled,
+  isLoading,
   currentLanguage,
   isRTL,
   t,
@@ -137,7 +139,9 @@ const WatcherToggleCard: React.FC<WatcherToggleCardProps> = ({
                         : "none",
                     }}
                   >
-                    {t(watcherEnabled ? "enabled" : "disabled")}
+                    {isLoading
+                      ? t("syncingStatus")
+                      : t(watcherEnabled ? "enabled" : "disabled")}
                   </motion.div>
                 </AnimatePresence>
               </div>
@@ -146,6 +150,7 @@ const WatcherToggleCard: React.FC<WatcherToggleCardProps> = ({
                 <PremiumSwitch
                   checked={watcherEnabled}
                   onCheckedChange={setWatcherEnabled}
+                  disabled={isLoading}
                 />
 
                 {/* Glow Effect */}

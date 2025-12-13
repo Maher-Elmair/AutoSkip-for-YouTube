@@ -5,27 +5,35 @@ import { SkipForward, CircleStop } from "lucide-react";
 interface PremiumSwitchProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
 }
 
-const PremiumSwitch: React.FC<PremiumSwitchProps> = ({ 
-  checked, 
-  onCheckedChange 
+const PremiumSwitch: React.FC<PremiumSwitchProps> = ({
+  checked,
+  onCheckedChange,
+  disabled = false,
 }) => {
   const handleClick = () => {
+    if (disabled) {
+      return;
+    }
+
     onCheckedChange(!checked);
   };
 
   return (
     <div
       onClick={handleClick}
-      className="relative w-32 h-16 rounded-full transition-all duration-500 shadow-2xl cursor-pointer"
+      className={`relative w-32 h-16 rounded-full transition-all duration-500 shadow-2xl ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+      }`}
       style={{
-        background: checked 
-          ? 'linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)'
-          : 'linear-gradient(135deg, var(--muted) 0%, var(--border) 100%)',
+        background: checked
+          ? "linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%)"
+          : "linear-gradient(135deg, var(--muted) 0%, var(--border) 100%)",
         boxShadow: checked
-          ? 'var(--switch-shadow-active)'
-          : 'var(--switch-shadow-inactive)',
+          ? "var(--switch-shadow-active)"
+          : "var(--switch-shadow-inactive)",
       }}
     >
       {/* Track Indicator */}
@@ -33,18 +41,19 @@ const PremiumSwitch: React.FC<PremiumSwitchProps> = ({
         <motion.div
           className="absolute inset-0"
           animate={{
-            x: checked ? 0 : '-100%',
+            x: checked ? 0 : "-100%",
           }}
           transition={{ duration: 0.5, ease: "easeInOut" }}
           style={{
-            background: 'linear-gradient(90deg, var(--track-highlight) 0%, transparent 100%)',
+            background:
+              "linear-gradient(90deg, var(--track-highlight) 0%, transparent 100%)",
           }}
         />
       </div>
 
       {/* Toggle Circle */}
       <motion.div
-        className="absolute top-2 w-12 h-12 bg-background rounded-full shadow-2xl flex items-center justify-center pointer-events-none"
+        className="absolute top-2 w-12 z-10 h-12 bg-background rounded-full shadow-2xl flex items-center justify-center pointer-events-none"
         animate={{
           x: checked ? 68 : 8,
           rotate: checked ? 360 : 0,
@@ -53,10 +62,10 @@ const PremiumSwitch: React.FC<PremiumSwitchProps> = ({
           type: "spring",
           stiffness: 400,
           damping: 25,
-          rotate: { duration: 0.5 }
+          rotate: { duration: 0.5 },
         }}
         style={{
-          boxShadow: 'var(--toggle-shadow)',
+          boxShadow: "var(--toggle-shadow)",
         }}
       >
         <AnimatePresence mode="wait">
@@ -68,11 +77,7 @@ const PremiumSwitch: React.FC<PremiumSwitchProps> = ({
               exit={{ scale: 0, rotate: 180 }}
               transition={{ duration: 0.3 }}
             >
-              <SkipForward 
-                size={20} 
-                strokeWidth={2.5}
-                color="var(--primary)"
-              />
+              <SkipForward size={20} strokeWidth={2.5} color="var(--primary)" />
             </motion.div>
           ) : (
             <motion.div
@@ -82,8 +87,8 @@ const PremiumSwitch: React.FC<PremiumSwitchProps> = ({
               exit={{ scale: 0, rotate: 180 }}
               transition={{ duration: 0.3 }}
             >
-              <CircleStop 
-                size={20} 
+              <CircleStop
+                size={20}
                 strokeWidth={2.5}
                 color="var(--muted-foreground)"
               />
@@ -99,7 +104,7 @@ const PremiumSwitch: React.FC<PremiumSwitchProps> = ({
             key={i}
             className="w-2 h-2 rounded-full"
             style={{
-              backgroundColor: 'var(--dot-color)'
+              backgroundColor: "var(--dot-color)",
             }}
             animate={{
               opacity: checked ? [0.3, 0.7, 0.3] : 0.1,

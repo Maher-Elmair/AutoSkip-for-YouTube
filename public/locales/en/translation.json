@@ -1,13 +1,23 @@
 {
-  "title": "AutoSkip for YouTube", 
+  "title": "AutoSkip for YouTube",
   "settings": "Settings",
   "language": "Language",
   "english": "English",
   "arabic": "Arabic",
   "enableWatcher": "AutoSkip Watcher",
   "enableWatcherDesc": "Automatically clicks the 'Skip' button when it appears in YouTube videos - does not remove ads",
-  "enabled": "Enabled", 
+  "enabled": "Enabled",
   "disabled": "Disabled",
   "active": "Active",
-  "inactive": "Inactive"
+  "inactive": "Inactive",
+  "syncingStatus": "Syncing...",
+  "adsSkipped": "Ads Skipped",
+  "adsSkippedDesc": "Total ads skipped successfully",
+  "notificationDelay": "Notification Delay",
+  "notificationDelayDesc": "Set how long to wait before showing the notification",
+  "adControlSettings": "Ad Control Settings",
+  "muteAdSound": "Mute Ad Sound",
+  "muteAdSoundDesc": "Automatically mute ad audio",
+  "blurAds": "Blur Ads",
+  "blurAdsDesc": "Automatically blur ad videos"
 }

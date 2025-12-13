@@ -6,7 +6,7 @@
 #root {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 2rem;
+  /* padding: 2rem; */
   text-align: center;
 }
 
@@ -61,7 +61,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-  --color-primary-hover: var(--primary-hover); 
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -88,6 +88,11 @@
   --color-toggle-shadow: var(--toggle-shadow);
   --color-switch-shadow-active: var(--switch-shadow-active);
   --color-switch-shadow-inactive: var(--switch-shadow-inactive);
+  
+  /* Scrollbar colors */
+  --color-scrollbar-track: var(--scrollbar-track);
+  --color-scrollbar-thumb: var(--scrollbar-thumb);
+  --color-scrollbar-thumb-hover: var(--scrollbar-thumb-hover);
 }
 
 :root {
@@ -122,13 +127,20 @@
   --button: #e5e5e5;
   --input: #f1f1f1;
   --ring: #ff0000;
-  
+
+  /* Scrollbar Light Mode */
+  --scrollbar-track: #f1f1f1;
+  --scrollbar-thumb: #c1c1c1;
+  --scrollbar-thumb-hover: #a1a1a1;
+
   /* Switch specific variables */
   --track-highlight: rgba(255, 255, 255, 0.2);
   --dot-color: rgba(255, 255, 255, 0.3);
   --toggle-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
-  --switch-shadow-active: 0 8px 32px rgba(255, 0, 0, 0.3), inset 0 2px 4px rgba(255,255,255,0.2);
-  --switch-shadow-inactive: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 2px 4px rgba(255,255,255,0.1);
+  --switch-shadow-active: 0 8px 32px rgba(255, 0, 0, 0.3),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+  --switch-shadow-inactive: 0 8px 32px rgba(0, 0, 0, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.1);
 }
 
 .dark {
@@ -162,9 +174,16 @@
   --input: #373737;
   --ring: #ff0000;
 
+  /* Scrollbar Dark Mode */
+  --scrollbar-track: #272727;
+  --scrollbar-thumb: #4a4a4a;
+  --scrollbar-thumb-hover: #606060;
+
   /* Switch specific variables for dark mode */
-  --switch-shadow-active: 0 8px 32px rgba(255, 0, 0, 0.4), inset 0 2px 4px rgba(255,255,255,0.1);
-  --switch-shadow-inactive: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 2px 4px rgba(255,255,255,0.05);
+  --switch-shadow-active: 0 8px 32px rgba(255, 0, 0, 0.4),
+    inset 0 2px 4px rgba(255, 255, 255, 0.1);
+  --switch-shadow-inactive: 0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 2px 4px rgba(255, 255, 255, 0.05);
 }
 
 @layer base {
@@ -174,4 +193,73 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Custom Scrollbar Styles */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Webkit Browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Smooth scrolling for the entire page */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Optional: Custom scrollbar for specific containers */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }

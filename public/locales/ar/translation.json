@@ -1,13 +1,23 @@
 {
   "title": "التخطي تلقائي ليوتيوب",
-  "settings": "الإعدادات", 
+  "settings": "الإعدادات",
   "language": "اللغة",
   "english": "الإنجليزية",
   "arabic": "العربية",
   "enableWatcher": "مراقب التخطي التلقائي",
   "enableWatcherDesc": "الضغط التلقائي على زر \"تخطي\" عند ظهوره في فيديوهات اليوتيوب - لا يقوم بإزالة الإعلانات",
   "enabled": "مفعل",
-  "disabled": "معطل", 
+  "disabled": "معطل",
   "active": "نشط",
-  "inactive": "غير نشط"
+  "inactive": "غير نشط",
+  "syncingStatus": "جاري المزامنة...",
+  "adsSkipped": "الإعلانات المتخطاة",
+  "adsSkippedDesc": "إجمالي الإعلانات المتخطاة بنجاح",
+  "notificationDelay": "تأخير الإشعار",
+  "notificationDelayDesc": "حدد المدة التي تنتظرها قبل عرض الإشعار",
+  "adControlSettings": "إعدادات التحكم في الإعلانات",
+  "muteAdSound": "كتم صوت الإعلان",
+  "muteAdSoundDesc": "كتم صوت الإعلانات تلقائياً",
+  "blurAds": "تشويش الإعلانات",
+  "blurAdsDesc": "تطبيق مرشح تشويش على الإعلانات"
 }

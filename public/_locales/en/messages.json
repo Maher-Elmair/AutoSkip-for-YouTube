@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AutoSkip for YouTube",
+    "description": "Extension name shown in Chrome UI"
+  },
+  "extensionDescription": {
+    "message": "Automatically clicks the official \"Skip Ads\" button on YouTube as soon as it becomes available.",
+    "description": "Extension description shown in Chrome UI"
+  }
+}

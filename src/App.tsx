@@ -6,17 +6,19 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { Title } from "@/components/shared/Title";
 import WatcherToggleCard from "./components/shared/WatcherToggleCard";
-import { useState } from "react";
+import AdsSkippedCard from "./components/shared/AdsSkippedCard";
+import AdControlSettingsCard from "./components/shared/AdControlSettingsCard";
+import { useWatcherSetting } from "@/hooks/useWatcherSetting";
 import { itemVariants } from "@/utils/variants";
 
 function App() {
   const { t, i18n } = useTranslation();
   const isRTL = i18n.language === "ar";
-  const currentLanguage = i18n.language;
-  const [watcherEnabled, setWatcherEnabled] = useState(false);
+  const currentLanguage: string = i18n.language;
+  const { watcherEnabled, setWatcherEnabled, isLoading } = useWatcherSetting();
 
   return (
-    <Card className="w-md bg-background">
+    <Card className="w-sm mx-auto bg-background border-0 shadow-none py-4">
       {/* Header */}
       <header
         className={`flex items-center justify-between px-6 ${
@@ -31,16 +33,23 @@ function App() {
         <WatcherToggleCard
           watcherEnabled={watcherEnabled}
           setWatcherEnabled={setWatcherEnabled}
-          currentLanguage={i18n.language}
+          isLoading={isLoading}
+          currentLanguage={currentLanguage}
           isRTL={isRTL}
           t={t}
         />
+        <AdsSkippedCard isRTL={isRTL} t={t} />
         <motion.h1
           variants={itemVariants}
           className="text-3xl py-6 font-bold text-foreground text-center"
         >
           {t("settings")}
         </motion.h1>
+        <AdControlSettingsCard
+          watcherEnabled={watcherEnabled}
+          isRTL={isRTL}
+          t={t}
+        />
         {/* Section : Language Selection */}
         <LanguageSelector
           currentLanguage={currentLanguage}

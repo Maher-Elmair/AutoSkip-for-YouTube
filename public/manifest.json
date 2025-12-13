@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "default_locale": "en",
+  "name": "AutoSkip for YouTube",
+  "short_name": "AutoSkip",
+  "description": "Automatically clicks the official \"Skip Ads\" button on YouTube as soon as it appears.",
+  "version": "1.0.2",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.youtube.com/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "AutoSkip for YouTube",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon16.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "autoskip@local",
+      "strict_min_version": "109.0"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

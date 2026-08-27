@@ -3,23 +3,13 @@ import {
   LOCAL_STORAGE_NAMESPACE,
   WATCHER_STORAGE_KEY,
 } from "@/constants/storage";
+import { resolveBrowserApi } from "@/extension/shared/browserApi";
+import { logWarn } from "@/extension/shared/logger";
 
-type ChromeLike = typeof chrome;
 type StorageListener = (enabled: boolean) => void;
 
 const FALLBACK_KEY = `${LOCAL_STORAGE_NAMESPACE}:${WATCHER_STORAGE_KEY}`;
 
-const resolveBrowserApi = (): ChromeLike | undefined => {
-  if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-    return chrome;
-  }
-
-  if (typeof browser !== "undefined" && browser?.storage?.sync) {
-    return browser as unknown as ChromeLike;
-  }
-
-  return undefined;
-};
 
 const readFromFallback = (): boolean => {
   if (typeof window === "undefined") {
@@ -49,10 +39,7 @@ export const readWatcherState = async (): Promise<boolean> => {
     api.storage.sync.get([WATCHER_STORAGE_KEY], (result) => {
       const storedValue = result[WATCHER_STORAGE_KEY];
       if (api.runtime?.lastError) {
-        console.warn(
-          "[autoskip] Failed to read watcher flag:",
-          api.runtime.lastError.message
-        );
+        logWarn("Failed to read watcher flag:", api.runtime.lastError.message);
         resolve(readFromFallback());
         return;
       }
@@ -75,10 +62,7 @@ export const writeWatcherState = async (enabled: boolean): Promise<void> => {
   await new Promise<void>((resolve) => {
     api.storage.sync.set({ [WATCHER_STORAGE_KEY]: enabled }, () => {
       if (api.runtime?.lastError) {
-        console.warn(
-          "[autoskip] Failed to persist watcher flag:",
-          api.runtime.lastError.message
-        );
+        logWarn("Failed to persist watcher flag:", api.runtime.lastError.message);
       } else {
         writeToFallback(enabled);
       }

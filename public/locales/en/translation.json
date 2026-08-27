@@ -19,5 +19,6 @@
   "muteAdSound": "Mute Ad Sound",
   "muteAdSoundDesc": "Automatically mute ad audio",
   "blurAds": "Blur Ads",
-  "blurAdsDesc": "Automatically blur ad videos"
+  "blurAdsDesc": "Automatically blur ad videos",
+  "selectorsStale": "YouTube may have changed its layout — the Skip button was not found during a long ad. An update may be required."
 }

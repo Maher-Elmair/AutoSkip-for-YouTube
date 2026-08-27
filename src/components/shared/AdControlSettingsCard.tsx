@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Card } from "@/components/ui/card";
 import { SkipForward, Volume2, Eye } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { containerVariants, itemVariants } from "@/utils/variants";
+import { resolveBrowserApi } from "@/extension/shared/browserApi";
+import { logDebug, logWarn } from "@/extension/shared/logger";
 
 interface AdControlSettingsCardProps {
   watcherEnabled: boolean;
@@ -19,91 +21,59 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
   const [muteAdSound, setMuteAdSound] = useState(true);
   const [blurAds, setBlurAds] = useState(false);
 
-  // Load saved settings from storage
+  // Load saved settings once. There is no save-effect: writes happen only in
+  // the toggle handlers, so a slow read can never overwrite a user action.
   useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const browserApi =
-          typeof chrome !== "undefined" && chrome.storage?.sync
-            ? chrome
-            : typeof browser !== "undefined" && browser?.storage?.sync
-            ? (browser as typeof chrome)
-            : null;
+    const api = resolveBrowserApi();
+    if (!api?.storage?.sync) return;
 
-        if (browserApi?.storage?.sync) {
-          browserApi.storage.sync.get(["muteAdSound", "blurAds"], (result) => {
-            // Check for errors
-            if (browserApi?.runtime?.lastError) {
-              console.warn("[autoskip] Failed to load ad control settings", browserApi.runtime.lastError);
-              return;
-            }
-
-            if (typeof result.muteAdSound === "boolean") {
-              setMuteAdSound(result.muteAdSound);
-              console.warn(`[autoskip] Loaded muteAdSound: ${result.muteAdSound}`);
-            }
-            if (typeof result.blurAds === "boolean") {
-              setBlurAds(result.blurAds);
-              console.warn(`[autoskip] Loaded blurAds: ${result.blurAds}`);
-            }
-          });
+    try {
+      api.storage.sync.get(["muteAdSound", "blurAds"], (result) => {
+        if (api.runtime?.lastError) {
+          logWarn("Failed to load ad control settings", api.runtime.lastError);
+          return;
         }
-      } catch (error) {
-        console.warn("[autoskip] Failed to load ad control settings", error);
-      }
-    };
-
-    loadSettings();
+        if (typeof result.muteAdSound === "boolean") {
+          setMuteAdSound(result.muteAdSound);
+        }
+        if (typeof result.blurAds === "boolean") {
+          setBlurAds(result.blurAds);
+        }
+      });
+    } catch (error) {
+      logWarn("Failed to load ad control settings", error);
+    }
   }, []);
 
-  // Save settings to storage
-  useEffect(() => {
-    const saveSettings = async () => {
-      try {
-        const browserApi =
-          typeof chrome !== "undefined" && chrome.storage?.sync
-            ? chrome
-            : typeof browser !== "undefined" && browser?.storage?.sync
-            ? (browser as typeof chrome)
-            : null;
+  const persist = (values: Partial<Record<"muteAdSound" | "blurAds", boolean>>) => {
+    const api = resolveBrowserApi();
+    if (!api?.storage?.sync) return;
 
-        if (browserApi?.storage?.sync) {
-          browserApi.storage.sync.set({ muteAdSound, blurAds }, () => {
-            // Check for errors but don't throw
-            if (browserApi?.runtime?.lastError) {
-              console.warn("[autoskip] Failed to save ad control settings", browserApi.runtime.lastError);
-            } else {
-              console.warn(`[autoskip] Saved ad control settings: muteAdSound=${muteAdSound}, blurAds=${blurAds}`);
-            }
-          });
+    try {
+      api.storage.sync.set(values, () => {
+        if (api.runtime?.lastError) {
+          logWarn("Failed to save ad control settings", api.runtime.lastError);
+        } else {
+          logDebug("Saved ad control settings", values);
         }
-      } catch (error) {
-        console.warn("[autoskip] Failed to save ad control settings", error);
-      }
-    };
-
-    saveSettings();
-  }, [muteAdSound, blurAds]);
+      });
+    } catch (error) {
+      logWarn("Failed to save ad control settings", error);
+    }
+  };
 
   const handleMuteToggle = (checked: boolean) => {
-    // Only allow toggle if main watcher is enabled
-    if (watcherEnabled) {
-      console.warn(`[autoskip] Setting muteAdSound to: ${checked}`);
-      setMuteAdSound(checked);
-    } else {
-      console.warn("[autoskip] Cannot toggle muteAdSound - watcher is disabled");
-    }
+    if (!watcherEnabled) return;
+    setMuteAdSound(checked);
+    persist({ muteAdSound: checked });
   };
 
   const handleBlurToggle = (checked: boolean) => {
-    // Only allow toggle if main watcher is enabled
-    if (watcherEnabled) {
-      console.warn(`[autoskip] Setting blurAds to: ${checked}`);
-      setBlurAds(checked);
-    } else {
-      console.warn("[autoskip] Cannot toggle blurAds - watcher is disabled");
-    }
+    if (!watcherEnabled) return;
+    setBlurAds(checked);
+    persist({ blurAds: checked });
   };
+
 
   return (
     <motion.div
@@ -124,9 +94,7 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
           <Card className="py-6 px-4 gap-0 shadow-md transition-all duration-300 bg-card border-border/20 rounded-xl">
             {/* Header */}
             <div
-              className={`flex items-center gap-2.5 mb-6 ${
-                isRTL ? "flex-row-reverse" : ""
-              }`}
+              className="flex items-center gap-2.5 mb-6"
             >
               {/* Icon Container */}
               <div className="p-2 rounded-md bg-primary/20 shadow-xl">
@@ -139,11 +107,7 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
                   }}
                   transition={{ duration: 0.4 }}
                 >
-                  <SkipForward
-                    className={`w-5 h-5 text-primary ${
-                      isRTL ? "rotate-180" : "rotate-0"
-                    }`}
-                  />
+                  <SkipForward className="icon-flip w-5 h-5 text-primary" />
                 </motion.div>
               </div>
               <h3 className="text-base font-semibold text-foreground">
@@ -168,14 +132,10 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
                   } ${!watcherEnabled ? "opacity-50" : ""}`}
                 >
                   <div
-                    className={`flex items-center justify-between ${
-                      isRTL ? "flex-row-reverse" : ""
-                    }`}
+                    className="flex items-center justify-between"
                   >
                     <div
-                      className={`flex items-center gap-2 text-left ${
-                        isRTL ? "flex-row-reverse text-right" : ""
-                      }`}
+                      className="flex items-center gap-2 text-start"
                     >
                       <motion.div
                         whileHover={{
@@ -186,12 +146,11 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
                         transition={{ duration: 0.4 }}
                       >
                         <Volume2
-                          className={`w-5 h-5 shrink-0 transition-colors ${
+                          className={`icon-flip w-5 h-5 shrink-0 transition-colors ${
                             watcherEnabled && muteAdSound
                               ? "text-primary"
                               : "text-muted-foreground"
-                          }
-                        ${isRTL ? " rotate-180" : " rotate-0"}`}
+                          }`}
                         />
                       </motion.div>
                       <div className="flex-1 min-w-0">
@@ -203,7 +162,7 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
                         </p>
                       </div>
                     </div>
-                    <div className={`shrink-0 ${isRTL ? "mr-3" : "ml-3"}`}>
+                    <div className="shrink-0 ms-3">
                       <Switch
                         checked={muteAdSound}
                         onCheckedChange={handleMuteToggle}
@@ -231,14 +190,10 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
                   } ${!watcherEnabled ? "opacity-50" : ""}`}
                 >
                   <div
-                    className={`flex items-center justify-between ${
-                      isRTL ? "flex-row-reverse" : ""
-                    }`}
+                    className="flex items-center justify-between"
                   >
                     <div
-                      className={`flex items-center gap-2 text-left ${
-                        isRTL ? "flex-row-reverse text-right" : ""
-                      }`}
+                      className="flex items-center gap-2 text-start"
                     >
                       <motion.div
                         whileHover={{
@@ -265,7 +220,7 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
                         </p>
                       </div>
                     </div>
-                    <div className={`shrink-0 ${isRTL ? "mr-3" : "ml-3"}`}>
+                    <div className="shrink-0 ms-3">
                       <Switch
                         checked={blurAds}
                         onCheckedChange={handleBlurToggle}

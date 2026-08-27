@@ -53,3 +53,8 @@ button:focus,
 button:focus-visible {
   /* outline: 4px auto -webkit-focus-ring-color; */
 }
+
+/* Bidirectional icons: flip once, globally, based on document direction. */
+[dir="rtl"] .icon-flip {
+  transform: rotate(180deg);
+}

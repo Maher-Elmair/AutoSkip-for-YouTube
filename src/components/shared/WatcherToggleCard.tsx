@@ -1,5 +1,5 @@
 import React from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { Card } from "@/components/ui/card";
 import { SkipForward } from "lucide-react";
 import PremiumSwitch from "@/components/ui/premium-switch";
@@ -15,18 +15,16 @@ interface WatcherToggleCardProps {
   setWatcherEnabled: (enabled: boolean) => void;
   isLoading: boolean;
   currentLanguage: string;
-  isRTL: boolean;
   t: (key: string) => string;
 }
-
 const WatcherToggleCard: React.FC<WatcherToggleCardProps> = ({
   watcherEnabled,
   setWatcherEnabled,
   isLoading,
   currentLanguage,
-  isRTL,
   t,
 }) => {
+  const isRTL = currentLanguage === "ar";
   return (
     <motion.div
       variants={containerVariants}
@@ -83,7 +81,7 @@ const WatcherToggleCard: React.FC<WatcherToggleCardProps> = ({
               whileTap={{ scale: 0.95 }}
             >
               <SkipForward
-                className={`w-16 h-16 md:w-18 md:h-18 ${
+                className={`icon-flip w-16 h-16 md:w-18 md:h-18 ${
                   watcherEnabled ? "text-primary" : "text-muted-foreground"
                 } transition-colors duration-300`}
               />
@@ -151,6 +149,7 @@ const WatcherToggleCard: React.FC<WatcherToggleCardProps> = ({
                   checked={watcherEnabled}
                   onCheckedChange={setWatcherEnabled}
                   disabled={isLoading}
+                  isRTL={isRTL}
                 />
 
                 {/* Glow Effect */}
@@ -171,9 +170,7 @@ const WatcherToggleCard: React.FC<WatcherToggleCardProps> = ({
 
               {/* Small Status Indicator */}
               <motion.div
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs ${
-                  isRTL ? "flex-row-reverse" : ""
-                } hidden`}
+                className="hidden items-center gap-2 px-3 py-1.5 rounded-full border text-xs"
                 animate={{
                   backgroundColor: watcherEnabled
                     ? "var(--primary)"

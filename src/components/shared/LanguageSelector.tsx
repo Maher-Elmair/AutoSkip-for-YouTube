@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Card } from "@/components/ui/card";
 import { Languages, ChevronDown } from "lucide-react";
 import { containerVariants, itemVariants } from "@/utils/variants";
 
 interface LanguageSelectorProps {
-  isRTL: boolean;
   currentLanguage: string;
   t: (key: string) => string;
   onChangeLanguage: (lng: string) => void;
@@ -13,7 +12,6 @@ interface LanguageSelectorProps {
 }
 
 const LanguageSelector: React.FC<LanguageSelectorProps> = ({
-  isRTL,
   currentLanguage,
   t,
   onChangeLanguage,
@@ -73,9 +71,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
         >
           <Card className="p-6 shadow-md transition-all duration-300 bg-card border-border">
             <div
-              className={`flex items-center gap-2.5 mb-3 ${
-                isRTL ? "flex-row-reverse" : ""
-              }`}
+              className="flex items-center gap-2.5 mb-3"
             >
               <motion.div
                 whileHover={{
@@ -92,16 +88,11 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                 {t("language")}
               </label>
             </div>
-            <div
-              className={`relative ${isRTL ? "text-right" : "text-left"}`}
-              ref={dropdownRef}
-            >
+            <div className="relative text-start" ref={dropdownRef}>
               <button
                 type="button"
                 onClick={() => setOpen((prev) => !prev)}
-                className={`${
-                  isRTL ? "flex-row-reverse" : ""
-                } w-full h-11 bg-input text-foreground border border-border rounded-md px-4 flex items-center justify-between text-sm focus:outline-none focus:ring-2 focus:ring-ring/40`}
+                className={`w-full h-11 bg-input text-foreground border border-border rounded-md px-4 flex items-center justify-between text-sm focus:outline-none focus:ring-2 focus:ring-ring/40`}
                 aria-haspopup="listbox"
                 aria-expanded={open}
               >
@@ -115,10 +106,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
               {open && (
                 <ul
                   role="listbox"
-                  className={`absolute z-50 mb-2 w-full rounded-lg border border-border bg-popover text-foreground shadow-xl bottom-full ${
-                    isRTL ? "right-0 text-right" : "left-0 text-left"
-                  }`}
-                  style={{ direction: isRTL ? "rtl" : "ltr" }}
+                  className="absolute z-50 mb-2 w-full rounded-lg border border-border bg-popover text-foreground shadow-xl bottom-full start-0 text-start"
                 >
                   {languages.map((language) => (
                     <li key={language.value}>

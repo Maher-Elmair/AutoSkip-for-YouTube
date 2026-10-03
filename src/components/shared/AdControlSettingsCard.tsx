@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from "react";
-import { motion } from "motion/react";
+import React, { useState, useEffect, useRef } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { Card } from "@/components/ui/card";
-import { SkipForward, Volume2, Eye } from "lucide-react";
+import { SkipForward, Volume2, Eye, FastForward, Info } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { containerVariants, itemVariants } from "@/utils/variants";
 import { resolveBrowserApi } from "@/extension/shared/browserApi";
 import { logDebug, logWarn } from "@/extension/shared/logger";
+import { storageGet, storageSet } from "@/extension/shared/storage";
+import SkipModeSwitch from "@/components/ui/skip-mode-switch";
+import PermissionConfirmDialog from "@/components/shared/PermissionConfirmDialog";
+import { useSkipMode } from "@/hooks/useSkipMode";
+import type { SkipMode } from "@/constants/storage";
 
 interface AdControlSettingsCardProps {
   watcherEnabled: boolean;
@@ -20,46 +25,98 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
 }) => {
   const [muteAdSound, setMuteAdSound] = useState(true);
   const [blurAds, setBlurAds] = useState(false);
+  const { skipMode, setSkipMode, autoIntroSeen, setAutoIntroSeen } =
+    useSkipMode();
+  const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
+  const [autoReminderVisible, setAutoReminderVisible] = useState(false);
+  const autoReminderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (autoReminderTimer.current) clearTimeout(autoReminderTimer.current);
+    },
+    []
+  );
+
+  const showAutoReminder = () => {
+    if (autoReminderTimer.current) clearTimeout(autoReminderTimer.current);
+    setAutoReminderVisible(true);
+    autoReminderTimer.current = setTimeout(() => {
+      setAutoReminderVisible(false);
+      autoReminderTimer.current = null;
+    }, 4000);
+  };
+
+  const handleSkipModeChange = (mode: SkipMode) => {
+    if (mode === skipMode) return;
+
+    // "auto" shows the one-time explainer dialog; everything else applies now.
+    if (mode === "auto" && !autoIntroSeen) {
+      setPermissionDialogOpen(true);
+      return;
+    }
+
+    if (mode === "auto") {
+      setSkipMode(mode);
+      showAutoReminder();
+      return;
+    }
+
+    setAutoReminderVisible(false);
+    setSkipMode(mode);
+  };
+
+  const confirmAutoMode = () => {
+    setPermissionDialogOpen(false);
+    setAutoIntroSeen(true);
+    setSkipMode("auto");
+  };
+
+  const cancelAutoMode = () => {
+    setPermissionDialogOpen(false);
+    // Keep the previous mode — nothing was changed.
+  };
+
+  const skipModeDescKey =
+    skipMode === "off"
+      ? "skipModeOffDesc"
+      : skipMode === "auto"
+        ? "skipModeAutoDesc"
+        : "skipModeAssistDesc";
 
   // Load saved settings once. There is no save-effect: writes happen only in
   // the toggle handlers, so a slow read can never overwrite a user action.
   useEffect(() => {
-    const api = resolveBrowserApi();
-    if (!api?.storage?.sync) return;
+    let mounted = true;
+    if (!resolveBrowserApi()?.storage?.sync) return;
 
-    try {
-      api.storage.sync.get(["muteAdSound", "blurAds"], (result) => {
-        if (api.runtime?.lastError) {
-          logWarn("Failed to load ad control settings", api.runtime.lastError);
-          return;
-        }
+    (async () => {
+      try {
+        const result = await storageGet("sync", ["muteAdSound", "blurAds"]);
+        if (!mounted) return;
         if (typeof result.muteAdSound === "boolean") {
           setMuteAdSound(result.muteAdSound);
         }
         if (typeof result.blurAds === "boolean") {
           setBlurAds(result.blurAds);
         }
-      });
-    } catch (error) {
-      logWarn("Failed to load ad control settings", error);
-    }
+      } catch (error) {
+        logWarn("Failed to load ad control settings", error);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const persist = (values: Partial<Record<"muteAdSound" | "blurAds", boolean>>) => {
-    const api = resolveBrowserApi();
-    if (!api?.storage?.sync) return;
+    if (!resolveBrowserApi()?.storage?.sync) return;
 
-    try {
-      api.storage.sync.set(values, () => {
-        if (api.runtime?.lastError) {
-          logWarn("Failed to save ad control settings", api.runtime.lastError);
-        } else {
-          logDebug("Saved ad control settings", values);
-        }
-      });
-    } catch (error) {
-      logWarn("Failed to save ad control settings", error);
-    }
+    void storageSet("sync", values).then((ok) => {
+      if (ok) logDebug("Saved ad control settings", values);
+      else logWarn("Failed to save ad control settings", values);
+    });
   };
 
   const handleMuteToggle = (checked: boolean) => {
@@ -115,6 +172,77 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
               </h3>
             </div>
             <div className="flex justify-center flex-col gap-4">
+              {/* Skip mode: off / assist / auto */}
+              <motion.div
+                whileHover={{
+                  y: -2,
+                  boxShadow: "0 10px 15px rgba(0,0,0,0.1)",
+                  borderRadius: "1rem",
+                }}
+                transition={{ duration: 0.2 }}
+              >
+                <div
+                  className={`p-4 rounded-lg transition-all duration-300 ${
+                    watcherEnabled && skipMode !== "off"
+                      ? "bg-primary/10 border border-primary/20"
+                      : "bg-accent border border-transparent"
+                  } ${!watcherEnabled ? "opacity-50" : ""}`}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <motion.div
+                      whileHover={{
+                        y: -2,
+                        boxShadow: "0 10px 15px rgba(0,0,0,0.1)",
+                        borderRadius: "1rem",
+                      }}
+                      transition={{ duration: 0.4 }}
+                    >
+                      <FastForward
+                        strokeWidth={2.5}
+                        className={`icon-flip h-5 w-5 shrink-0 transition-colors duration-300 ${
+                          watcherEnabled && skipMode !== "off"
+                            ? "text-primary"
+                            : "text-muted-foreground"
+                        }`}
+                      />
+                    </motion.div>
+                    <h4 className="text-sm font-medium text-foreground text-start">
+                      {t("skipModeTitle")}
+                    </h4>
+                  </div>
+                  <SkipModeSwitch
+                    value={skipMode}
+                    disabled={!watcherEnabled}
+                    onChange={handleSkipModeChange}
+                    isRTL={isRTL}
+                    options={[
+                      { value: "off", label: t("skipModeOff") },
+                      { value: "assist", label: t("skipModeAssist") },
+                      { value: "auto", label: t("skipModeAuto") },
+                    ]}
+                  />
+                  <p className="text-xs text-muted-foreground leading-relaxed mt-3 text-start">
+                    {t(skipModeDescKey)}
+                  </p>
+                  <AnimatePresence>
+                    {autoReminderVisible && skipMode === "auto" && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className="mt-3 flex items-start gap-2 rounded-md border border-primary/20 bg-background/60 p-2.5 text-start"
+                        role="status"
+                      >
+                        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          {t("skipModeReturnReminder")}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+
               <motion.div
                 whileHover={{
                   y: -2,
@@ -235,6 +363,16 @@ const AdControlSettingsCard: React.FC<AdControlSettingsCardProps> = ({
           </Card>
         </motion.div>
       </motion.div>
+
+      <PermissionConfirmDialog
+        open={permissionDialogOpen}
+        title={t("skipModePermissionTitle")}
+        body={t("skipModePermissionBody")}
+        confirmLabel={t("skipModePermissionConfirm")}
+        cancelLabel={t("skipModePermissionCancel")}
+        onConfirm={confirmAutoMode}
+        onCancel={cancelAutoMode}
+      />
     </motion.div>
   );
 };

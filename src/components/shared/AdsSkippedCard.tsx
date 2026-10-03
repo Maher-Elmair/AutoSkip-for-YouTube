@@ -5,6 +5,7 @@ import { SkipForward, AlertTriangle } from "lucide-react";
 import { containerVariants, itemVariants } from "@/utils/variants";
 import { resolveBrowserApi } from "@/extension/shared/browserApi";
 import { logWarn } from "@/extension/shared/logger";
+import { onStorageChanged, storageGet } from "@/extension/shared/storage";
 import { ADS_SKIPPED_KEY, SELECTORS_STALE_KEY } from "@/constants/storage";
 
 interface AdsSkippedCardProps {
@@ -27,12 +28,7 @@ const AdsSkippedCard: React.FC<AdsSkippedCardProps> = ({
 
   // The counter lives in storage.local (frequent writes, no sync quota).
   const handleStorageChange = useCallback(
-    (
-      changes: Record<string, chrome.storage.StorageChange>,
-      areaName: string
-    ) => {
-      if (areaName !== "local") return;
-
+    (changes: Record<string, { newValue?: unknown; oldValue?: unknown }>) => {
       const change = changes[ADS_SKIPPED_KEY];
       if (change && typeof change.newValue === "number") {
         setAdsSkipped(change.newValue);
@@ -46,70 +42,44 @@ const AdsSkippedCard: React.FC<AdsSkippedCardProps> = ({
     []
   );
 
- useEffect(() => {
-  let mounted = true;
-  const api = resolveBrowserApi();
-
-  // isLoading already starts as `false` in this case (see useState
-  // initializer above), so there is nothing to synchronize here.
-  if (!api?.storage?.local) {
-    return;
-  }
-
-  (async () => {
-    try {
-      await new Promise<void>((resolve) => {
-        api.storage.local.get([ADS_SKIPPED_KEY, SELECTORS_STALE_KEY], (result) => {
-          if (!mounted) {
-            resolve();
-            return;
-          }
-
-          if (api.runtime?.lastError) {
-            logWarn("Failed to load ads skipped count", api.runtime.lastError);
-            setIsLoading(false);
-            resolve();
-            return;
-          }
-
-          if (typeof result[ADS_SKIPPED_KEY] === "number") {
-            setAdsSkipped(result[ADS_SKIPPED_KEY] as number);
-          }
-          setSelectorsStale(Boolean(result[SELECTORS_STALE_KEY]));
-          setIsLoading(false);
-          resolve();
-        });
-      });
-    } catch (error) {
-      if (!mounted) return;
-      logWarn("Failed to load ads skipped count", error);
-      setIsLoading(false);
-    }
-  })();
-
-  return () => {
-    mounted = false;
-  };
-}, []);
-
   useEffect(() => {
-    const api = resolveBrowserApi();
-    if (!api?.storage?.onChanged) return;
+    let mounted = true;
 
-    try {
-      api.storage.onChanged.addListener(handleStorageChange);
-      return () => {
-        try {
-          api.storage.onChanged.removeListener(handleStorageChange);
-        } catch (error) {
-          logWarn("Failed to remove storage change listener", error);
-        }
-      };
-    } catch (error) {
-      logWarn("Failed to add storage change listener", error);
-      return undefined;
+    // isLoading already starts as `false` in this case (see useState
+    // initializer above), so there is nothing to synchronize here.
+    if (!resolveBrowserApi()?.storage?.local) {
+      return;
     }
-  }, [handleStorageChange]);
+
+    (async () => {
+      try {
+        const result = await storageGet("local", [
+          ADS_SKIPPED_KEY,
+          SELECTORS_STALE_KEY,
+        ]);
+        if (!mounted) return;
+
+        if (typeof result[ADS_SKIPPED_KEY] === "number") {
+          setAdsSkipped(result[ADS_SKIPPED_KEY] as number);
+        }
+        setSelectorsStale(Boolean(result[SELECTORS_STALE_KEY]));
+        setIsLoading(false);
+      } catch (error) {
+        if (!mounted) return;
+        logWarn("Failed to load ads skipped count", error);
+        setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(
+    () => onStorageChanged("local", handleStorageChange),
+    [handleStorageChange]
+  );
 
   return (
     <motion.div

@@ -5,113 +5,158 @@ import {
 } from "@/constants/storage";
 import { resolveBrowserApi } from "./shared/browserApi";
 import { logDebug, logWarn } from "./shared/logger";
+import { storageGet, storageRemove, storageSet } from "./shared/storage";
 
 const api = resolveBrowserApi();
 
 // Throttle storage writes to avoid sync quota issues.
 let lastWriteTime = 0;
-let WRITE_THROTTLE_MS = 1000;
+const WRITE_THROTTLE_MS = 1000;
 
 /** Settings live in sync; the counter lives in local. */
-const ensureDefaults = () => {
+const ensureDefaults = async () => {
   if (!api?.storage?.sync) {
     logWarn("Background: storage API not available");
     return;
   }
 
   try {
-    api.storage.sync.get(
-      [WATCHER_STORAGE_KEY, "muteAdSound", "blurAds", ADS_SKIPPED_KEY],
-      (result) => {
-        if (api?.runtime?.lastError) {
-          logWarn(
-            "Background: storage get error:",
-            api.runtime.lastError.message,
-          );
-          return;
-        }
+    const result = await storageGet("sync", [
+      WATCHER_STORAGE_KEY,
+      "muteAdSound",
+      "blurAds",
+      ADS_SKIPPED_KEY,
+    ]);
 
-        const updates: Record<string, unknown> = {};
+    const updates: Record<string, unknown> = {};
 
-        if (typeof result[WATCHER_STORAGE_KEY] === "undefined") {
-          updates[WATCHER_STORAGE_KEY] = DEFAULT_WATCHER_STATE;
-        }
-        if (typeof result.muteAdSound === "undefined") {
-          updates.muteAdSound = true;
-        }
-        if (typeof result.blurAds === "undefined") {
-          updates.blurAds = false;
-        }
+    if (typeof result[WATCHER_STORAGE_KEY] === "undefined") {
+      updates[WATCHER_STORAGE_KEY] = DEFAULT_WATCHER_STATE;
+    }
+    if (typeof result.muteAdSound === "undefined") {
+      updates.muteAdSound = true;
+    }
+    if (typeof result.blurAds === "undefined") {
+      updates.blurAds = false;
+    }
 
-        if (Object.keys(updates).length > 0) {
-          const now = Date.now();
-          if (now - lastWriteTime >= WRITE_THROTTLE_MS) {
-            lastWriteTime = now;
-            api.storage.sync.set(updates, () => {
-              const setError = api?.runtime?.lastError?.message;
-              if (setError) {
-                logWarn("Background: failed to set defaults:", setError);
-                if (
-                  setError.includes("quota") ||
-                  setError.includes("MAX_WRITE")
-                ) {
-                  WRITE_THROTTLE_MS = 2000;
-                }
-              } else {
-                logDebug("Background: defaults initialized");
-              }
-            });
-          }
-        }
+    if (Object.keys(updates).length > 0) {
+      const now = Date.now();
+      if (now - lastWriteTime >= WRITE_THROTTLE_MS) {
+        lastWriteTime = now;
+        const ok = await storageSet("sync", updates);
+        if (ok) logDebug("Background: defaults initialized");
+      }
+    }
 
-        // Migrate the legacy sync counter to local storage once.
-        migrateCounter(
-          typeof result[ADS_SKIPPED_KEY] === "number"
-            ? (result[ADS_SKIPPED_KEY] as number)
-            : null,
-        );
-      },
+    // Migrate the legacy sync counter to local storage once.
+    await migrateCounter(
+      typeof result[ADS_SKIPPED_KEY] === "number"
+        ? (result[ADS_SKIPPED_KEY] as number)
+        : null,
     );
   } catch (error) {
     logWarn("Background: failed to ensure default settings", error);
   }
 };
 
-const migrateCounter = (legacyValue: number | null) => {
+const migrateCounter = async (legacyValue: number | null) => {
   if (!api?.storage?.local) return;
 
-  api.storage.local.get([ADS_SKIPPED_KEY], (localResult) => {
-    if (api?.runtime?.lastError) return;
+  const localResult = await storageGet("local", [ADS_SKIPPED_KEY]);
+  const localValue =
+    typeof localResult[ADS_SKIPPED_KEY] === "number"
+      ? (localResult[ADS_SKIPPED_KEY] as number)
+      : null;
 
-    const localValue =
-      typeof localResult[ADS_SKIPPED_KEY] === "number"
-        ? (localResult[ADS_SKIPPED_KEY] as number)
-        : null;
+  if (localValue === null) {
+    await storageSet("local", { [ADS_SKIPPED_KEY]: legacyValue ?? 0 });
+  }
 
-    if (localValue === null) {
-      api.storage.local.set({ [ADS_SKIPPED_KEY]: legacyValue ?? 0 });
-    }
-
-    if (legacyValue !== null) {
-      api.storage.sync.remove(ADS_SKIPPED_KEY);
-    }
-  });
+  if (legacyValue !== null) {
+    await storageRemove("sync", ADS_SKIPPED_KEY);
+  }
 };
 
 if (api?.runtime?.onInstalled) {
   try {
     api.runtime.onInstalled.addListener((details) => {
-      try {
-        ensureDefaults();
-        logDebug("Extension", details.reason);
-      } catch (error) {
-        logWarn("Failed during installation handling", error);
-      }
+      void ensureDefaults();
+      logDebug("Extension", details.reason);
     });
   } catch (error) {
     logWarn("Failed to set up installation listener", error);
   }
 }
+
+/**
+ * Auto mode: a real (trusted) mouse click via the DevTools protocol.
+ * Requires the OPTIONAL `debugger` permission, which is only ever requested
+ * from the popup when the user picks "auto".
+ */
+const dispatchTrustedClick = async (
+  tabId: number | undefined,
+  x: number,
+  y: number,
+  sendResponse: (response: unknown) => void,
+) => {
+  const debuggerApi = (api as typeof chrome | undefined)?.debugger;
+  const permissions = (api as typeof chrome | undefined)?.permissions;
+
+  if (!tabId) return sendResponse({ success: false, reason: "no-tab" });
+  if (!debuggerApi || !permissions) {
+    return sendResponse({ success: false, reason: "unsupported" });
+  }
+
+  try {
+    // Defensive only: `debugger` is a required manifest permission, so this
+    // should never fail unless a power user revoked it by hand.
+    const granted = await permissions.contains({ permissions: ["debugger"] });
+    if (!granted) {
+      return sendResponse({ success: false, reason: "unexpected-missing-permission" });
+    }
+  } catch {
+    return sendResponse({ success: false, reason: "unexpected-missing-permission" });
+  }
+
+  const target = { tabId };
+  let attached = false;
+
+  try {
+    await debuggerApi.attach(target, "1.3");
+    attached = true;
+
+    const base = { x, y, button: "left" as const, clickCount: 1 };
+    await debuggerApi.sendCommand(target, "Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x,
+      y,
+    });
+    await debuggerApi.sendCommand(target, "Input.dispatchMouseEvent", {
+      ...base,
+      type: "mousePressed",
+      buttons: 1,
+    });
+    await debuggerApi.sendCommand(target, "Input.dispatchMouseEvent", {
+      ...base,
+      type: "mouseReleased",
+      buttons: 0,
+    });
+
+    sendResponse({ success: true });
+  } catch (error) {
+    logWarn("Trusted click failed", error);
+    sendResponse({ success: false, reason: "attach-failed" });
+  } finally {
+    if (attached) {
+      try {
+        await debuggerApi.detach(target);
+      } catch {
+        /* already detached */
+      }
+    }
+  }
+};
 
 if (api?.runtime?.onMessage) {
   try {
@@ -123,11 +168,7 @@ if (api?.runtime?.onMessage) {
             return false;
           }
 
-          api.storage.sync.get([WATCHER_STORAGE_KEY], (result) => {
-            if (api?.runtime?.lastError) {
-              sendResponse({ enabled: DEFAULT_WATCHER_STATE });
-              return;
-            }
+          void storageGet("sync", [WATCHER_STORAGE_KEY]).then((result) => {
             const stored = result[WATCHER_STORAGE_KEY];
             sendResponse({
               enabled:
@@ -146,25 +187,24 @@ if (api?.runtime?.onMessage) {
           const now = Date.now();
           if (now - lastWriteTime >= WRITE_THROTTLE_MS) {
             lastWriteTime = now;
-            api.storage.sync.set(
-              { [WATCHER_STORAGE_KEY]: message.enabled },
-              () => {
-                if (api?.runtime?.lastError) {
-                  logWarn(
-                    "Failed to set watcher state",
-                    api.runtime.lastError.message,
-                  );
-                  sendResponse({ success: false });
-                } else {
-                  sendResponse({ success: true });
-                }
-              },
-            );
+            void storageSet("sync", {
+              [WATCHER_STORAGE_KEY]: message.enabled,
+            }).then((ok) => sendResponse({ success: ok }));
             return true;
           }
 
           sendResponse({ success: true, throttled: true });
           return false;
+        }
+
+        if (message?.type === "SKIP_AD_TRUSTED_CLICK") {
+          void dispatchTrustedClick(
+            _sender?.tab?.id,
+            message.x,
+            message.y,
+            sendResponse,
+          );
+          return true; // async response
         }
 
         return false;
@@ -180,4 +220,4 @@ if (api?.runtime?.onMessage) {
 }
 
 // Initialize on service worker / background script startup too.
-ensureDefaults();
+void ensureDefaults();

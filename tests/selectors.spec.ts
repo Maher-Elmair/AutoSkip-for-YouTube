@@ -10,10 +10,13 @@ import { test, expect, chromium, type BrowserContext } from "@playwright/test";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  SKIP_BUTTON_SELECTORS,
+  AD_SKIP_SELECTORS,
   AD_INDICATOR_SELECTORS,
   BLUR_OVERLAY_ID,
+  FALLBACK_SKIP_SELECTORS,
+  OVERLAY_CLOSE_SELECTORS,
   PLAYER_SELECTOR,
+  SURVEY_SKIP_SELECTORS,
 } from "../src/extension/shared/skipSelectors";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -60,7 +63,13 @@ test("known skip / ad selectors are still valid CSS and queryable", async () => 
           return true;
         }
       }),
-    [...SKIP_BUTTON_SELECTORS, ...AD_INDICATOR_SELECTORS]
+    [
+      ...AD_SKIP_SELECTORS,
+      ...SURVEY_SKIP_SELECTORS,
+      ...OVERLAY_CLOSE_SELECTORS,
+      ...FALLBACK_SKIP_SELECTORS,
+      ...AD_INDICATOR_SELECTORS,
+    ]
   );
 
   expect(invalid, `Invalid selectors: ${invalid.join(", ")}`).toEqual([]);

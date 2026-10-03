@@ -3,25 +3,44 @@ import {
   WATCHER_STORAGE_KEY,
   ADS_SKIPPED_KEY,
   SELECTORS_STALE_KEY,
+  SKIP_MODE_KEY,
+  DEFAULT_SKIP_MODE,
+  isSkipMode,
+  type SkipMode,
 } from "@/constants/storage";
 import { resolveBrowserApi } from "./shared/browserApi";
 import { logDebug, logWarn } from "./shared/logger";
+import { onStorageChanged, storageGet, storageSet } from "./shared/storage";
 import {
+  AD_SKIP_SELECTORS,
   AD_CLASS_NAMES,
   AD_INDICATOR_SELECTORS,
   BLUR_OVERLAY_ID,
+  HIGHLIGHT_OVERLAY_ID,
+  INJECTED_STYLE_ID,
+  TOAST_ID,
+  FALLBACK_SKIP_SELECTORS,
   MAX_HEURISTIC_LABEL_LENGTH,
+  OVERLAY_CLOSE_SELECTORS,
   PLAYER_SELECTOR,
-  SKIP_BUTTON_SELECTORS,
+  SKIP_EXCLUDE_KEYWORDS,
   SKIP_KEYWORDS,
+  SURVEY_SKIP_SELECTORS,
   VIDEO_PLAYER_SELECTOR,
 } from "./shared/skipSelectors";
 
 /** Safety-net polling only. MutationObserver is the primary mechanism. */
-const SAFETY_NET_INTERVAL_MS = 400;
+const SAFETY_NET_INTERVAL_MS = 1000;
 /** If an ad runs this long with no matching skip button, selectors may be stale. */
 const STALE_SELECTOR_THRESHOLD_MS = 20000;
 const COUNTER_UPDATE_DELAY_MS = 2000;
+/** Wait after a click before deciding whether the ad really went away. */
+const SKIP_VERIFICATION_DELAY_MS = 900;
+/** A real skip works at once; don't re-click the same element every tick. */
+const CLICK_COOLDOWN_MS = 1500;
+
+/** Only a precise video-ad skip is eligible for the Ads Skipped counter. */
+type SkipClickSource = "ad-skip" | "auxiliary" | "fallback" | null;
 
 class AutoSkipWatcher {
   private observer: MutationObserver | null = null;
@@ -32,6 +51,10 @@ class AutoSkipWatcher {
   // Feature settings
   private muteAdSound = true;
   private blurAds = false;
+  private skipMode: SkipMode = DEFAULT_SKIP_MODE;
+
+  // Auto mode: one in-flight trusted click at a time.
+  private trustedClickPending = false;
 
   // Ad state
   private isAdPlaying = false;
@@ -64,7 +87,7 @@ class AutoSkipWatcher {
           () => {
             if (this.isEnabled) this.startWatching();
           },
-          { once: true }
+          { once: true },
         );
       } else if (this.isEnabled) {
         this.startWatching();
@@ -77,11 +100,9 @@ class AutoSkipWatcher {
         }
       });
 
-      window.addEventListener(
-        "beforeunload",
-        () => this.cleanup(),
-        { once: true }
-      );
+      window.addEventListener("beforeunload", () => this.cleanup(), {
+        once: true,
+      });
     } catch (error) {
       this.logError("Bootstrap failed", error);
     }
@@ -95,72 +116,68 @@ class AutoSkipWatcher {
       return;
     }
 
-    await new Promise<void>((resolve) => {
-      this.api!.storage.sync.get([WATCHER_STORAGE_KEY], (result) => {
-        if (this.checkForErrors()) return resolve();
-        const stored = result[WATCHER_STORAGE_KEY];
-        this.isEnabled =
-          typeof stored === "boolean" ? stored : DEFAULT_WATCHER_STATE;
-        logDebug("Watcher initial state:", this.isEnabled);
-        resolve();
-      });
-    });
+    const result = await storageGet("sync", [WATCHER_STORAGE_KEY]);
+    const stored = result[WATCHER_STORAGE_KEY];
+    this.isEnabled =
+      typeof stored === "boolean" ? stored : DEFAULT_WATCHER_STATE;
+    logDebug("Watcher initial state:", this.isEnabled);
   }
 
   private async loadFeatureSettings() {
     if (!this.api?.storage?.sync) return;
 
-    await new Promise<void>((resolve) => {
-      this.api!.storage.sync.get(["muteAdSound", "blurAds"], (result) => {
-        if (this.checkForErrors()) return resolve();
-        if (typeof result.muteAdSound === "boolean") {
-          this.muteAdSound = result.muteAdSound;
-        }
-        if (typeof result.blurAds === "boolean") {
-          this.blurAds = result.blurAds;
-        }
-        resolve();
-      });
-    });
+    const result = await storageGet("sync", [
+      "muteAdSound",
+      "blurAds",
+      SKIP_MODE_KEY,
+    ]);
+    if (typeof result.muteAdSound === "boolean") {
+      this.muteAdSound = result.muteAdSound;
+    }
+    if (typeof result.blurAds === "boolean") {
+      this.blurAds = result.blurAds;
+    }
+    if (isSkipMode(result[SKIP_MODE_KEY])) {
+      this.skipMode = result[SKIP_MODE_KEY];
+    }
   }
 
   private listenToStorage() {
     if (!this.api?.storage?.onChanged) return;
 
     try {
-      this.api.storage.onChanged.addListener(
-        (
-          changes: Record<string, chrome.storage.StorageChange>,
-          areaName: string
-        ) => {
-          if (this.contextInvalidated || areaName !== "sync") return;
+      onStorageChanged("sync", (changes) => {
+        if (this.contextInvalidated) return;
 
-          const watcherChange = changes[WATCHER_STORAGE_KEY];
-          if (watcherChange && typeof watcherChange.newValue === "boolean") {
-            this.toggleWatcher(watcherChange.newValue);
-          }
-
-          if (
-            changes.muteAdSound &&
-            typeof changes.muteAdSound.newValue === "boolean"
-          ) {
-            this.muteAdSound = changes.muteAdSound.newValue;
-            if (this.isAdPlaying && this.isEnabled) {
-              if (this.muteAdSound) this.applyMuteFeature();
-              else this.restoreVideoMute();
-            }
-          }
-
-          if (changes.blurAds && typeof changes.blurAds.newValue === "boolean") {
-            this.blurAds = changes.blurAds.newValue;
-            if (this.blurAds && this.isAdPlaying && this.isEnabled) {
-              this.applyBlurFeature();
-            } else {
-              this.removeBlurFeature();
-            }
-          }
+        const watcherChange = changes[WATCHER_STORAGE_KEY];
+        if (watcherChange && typeof watcherChange.newValue === "boolean") {
+          this.toggleWatcher(watcherChange.newValue);
         }
-      );
+
+        if (
+          changes.muteAdSound &&
+          typeof changes.muteAdSound.newValue === "boolean"
+        ) {
+          this.muteAdSound = changes.muteAdSound.newValue;
+          if (!this.muteAdSound) this.restoreVideoMute();
+          // Re-evaluate live instead of trusting a possibly stale ad flag.
+          if (this.isEnabled) this.tick();
+        }
+
+        if (changes.blurAds && typeof changes.blurAds.newValue === "boolean") {
+          this.blurAds = changes.blurAds.newValue;
+          if (!this.blurAds) this.removeBlurFeature();
+          if (this.isEnabled) this.tick();
+        }
+
+        const modeChange = changes[SKIP_MODE_KEY];
+        if (modeChange && isSkipMode(modeChange.newValue)) {
+          this.skipMode = modeChange.newValue;
+          // Leftover assist highlight must not survive a mode switch.
+          if (this.skipMode !== "assist") this.removeHighlight();
+          if (this.isEnabled) this.tick();
+        }
+      });
     } catch (error) {
       this.logError("Failed to listen to storage", error);
     }
@@ -183,8 +200,71 @@ class AutoSkipWatcher {
     }
   }
 
+  /**
+   * True only on a real playback surface. YouTube reuses `#movie_player`-like
+   * markup in other UI contexts (e.g. the Premium downloads manager), where
+   * clicking or observing caused issue #2. A route check plus a real, loaded
+   * <video> inside the player is required before the extension touches
+   * anything.
+   */
+  private isActivePlaybackContext(): boolean {
+    const path = window.location.pathname;
+    const isPlaybackRoute =
+      path.startsWith("/watch") ||
+      path.startsWith("/embed/") ||
+      path.startsWith("/shorts/") ||
+      path.startsWith("/live/") ||
+      path.startsWith("/clip/");
+
+    if (!isPlaybackRoute) return false;
+
+    const container = document.querySelector<HTMLElement>(PLAYER_SELECTOR);
+    if (!container) return false;
+
+    const video = container.querySelector<HTMLVideoElement>("video");
+    if (!video) return false;
+
+    return (
+      video.readyState > 0 ||
+      !!video.currentSrc ||
+      !!video.src ||
+      video.duration > 0
+    );
+  }
+
+  /** Cached for the duration of one tick to avoid repeated DOM work. */
+  private cachedPlayer: HTMLElement | null = null;
+  private playerCacheValid = false;
+  private tickScheduled = false;
+
   private getPlayer(): HTMLElement | null {
-    return document.querySelector<HTMLElement>(PLAYER_SELECTOR);
+    if (this.playerCacheValid) return this.cachedPlayer;
+    this.playerCacheValid = true;
+    this.cachedPlayer = this.isActivePlaybackContext()
+      ? document.querySelector<HTMLElement>(PLAYER_SELECTOR)
+      : null;
+    return this.cachedPlayer;
+  }
+
+  private invalidatePlayerCache() {
+    this.playerCacheValid = false;
+    this.cachedPlayer = null;
+  }
+
+  /** Coalesces mutation bursts into at most one tick per animation frame. */
+  private scheduleTick() {
+    if (this.tickScheduled || !this.isEnabled || this.contextInvalidated)
+      return;
+    this.tickScheduled = true;
+    window.requestAnimationFrame(() => {
+      this.tickScheduled = false;
+      if (!this.isEnabled || this.contextInvalidated) return;
+      try {
+        this.tick();
+      } catch (error) {
+        logWarn("Failed to process mutations", error);
+      }
+    });
   }
 
   private startWatching() {
@@ -192,45 +272,29 @@ class AutoSkipWatcher {
 
     // Scope the observer to the player when it exists; otherwise watch the
     // body only until the player appears, then re-scope.
+    this.invalidatePlayerCache();
     const player = this.getPlayer();
     const root = player ?? document.body ?? document.documentElement;
     if (!root) return;
 
     try {
-      this.observer = new MutationObserver(() => {
-        if (!this.isEnabled || this.contextInvalidated) return;
-        try {
-          if (!player && this.getPlayer()) {
-            // Player mounted after we started: re-scope to it without
-            // touching the current ad state (no mute/blur flicker).
-            this.rescopeObserverToPlayer();
-            return;
-          }
-          this.tick();
-        } catch (error) {
-          logWarn("Failed to process mutations", error);
-        }
+      this.observer = new MutationObserver((mutations) => {
+        if (this.hasRelevantMutation(mutations)) this.scheduleTick();
       });
-
 
       this.observer.observe(root, {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["class", "style"],
+        attributeFilter: ["class"],
       });
       this.observerScopedToPlayer = player !== null;
-
 
       // Safety net only — never the primary mechanism.
       if (this.intervalId === null) {
         this.intervalId = window.setInterval(() => {
           if (!this.isEnabled || this.contextInvalidated) return;
           try {
-            if (!this.observerIsScopedToPlayer() && this.getPlayer()) {
-              this.rescopeObserverToPlayer();
-              return;
-            }
             this.tick();
           } catch (error) {
             logWarn("Failed during safety-net interval", error);
@@ -247,8 +311,32 @@ class AutoSkipWatcher {
 
   private observerScopedToPlayer = false;
 
-  private observerIsScopedToPlayer(): boolean {
-    return this.observerScopedToPlayer;
+  /** Ignore progress-bar and control animation churn inside the player. */
+  private hasRelevantMutation(mutations: MutationRecord[]): boolean {
+    const relevantSelector = [
+      ...AD_SKIP_SELECTORS,
+      ...SURVEY_SKIP_SELECTORS,
+      ...OVERLAY_CLOSE_SELECTORS,
+      ...AD_INDICATOR_SELECTORS,
+    ].join(",");
+
+    return mutations.some((mutation) => {
+      if (mutation.type === "attributes") {
+        const target = mutation.target;
+        return (
+          target instanceof HTMLElement &&
+          (target.matches(PLAYER_SELECTOR) || target.matches(relevantSelector))
+        );
+      }
+
+      return Array.from(mutation.addedNodes).some((node) => {
+        if (!(node instanceof HTMLElement)) return false;
+        return (
+          node.matches(relevantSelector) ||
+          node.querySelector(relevantSelector) !== null
+        );
+      });
+    });
   }
 
   /**
@@ -269,7 +357,6 @@ class AutoSkipWatcher {
       logWarn("Failed to re-scope observer to player", error);
     }
   }
-
 
   private stopWatching() {
     try {
@@ -301,6 +388,7 @@ class AutoSkipWatcher {
     this.staleSignalSent = false;
     this.restoreVideoMute();
     this.removeBlurFeature();
+    this.removeHighlight();
   }
 
   // -------------------------------------------------------------------- tick
@@ -314,23 +402,29 @@ class AutoSkipWatcher {
   private tick() {
     if (!this.isEnabled || this.contextInvalidated) return;
 
-    // 1) Click first — a visible, enabled skip button is proof enough.
-    const clicked = this.scanAndClickSkipButton();
+    this.invalidatePlayerCache();
 
-    // 2) Then update ad state for the cosmetic features + counter.
-    this.updateAdState(clicked);
-  }
+    if (!this.observerScopedToPlayer && this.getPlayer()) {
+      // Player mounted after we started: re-scope without touching ad state.
+      this.rescopeObserverToPlayer();
+      return;
+    }
 
-  private updateAdState(clickedSkip: boolean) {
     const adPresent = this.isAdCurrentlyPlaying();
 
+    // One combined precise query runs on every tick. Broad selectors and text
+    // heuristics stay gated behind a real ad signal.
+    const clicked = this.scanAndClickSkipButton(adPresent);
+
+    this.updateAdState(adPresent, clicked);
+  }
+
+  private updateAdState(adPresent: boolean, clickedSkip: SkipClickSource) {
     if (adPresent && !this.isAdPlaying) {
       this.isAdPlaying = true;
       this.adStartedAt = Date.now();
       this.adCounterIncremented = false;
       this.staleSignalSent = false;
-      if (this.muteAdSound) this.applyMuteFeature();
-      if (this.blurAds) this.applyBlurFeature();
     } else if (!adPresent && this.isAdPlaying) {
       this.isAdPlaying = false;
       this.adStartedAt = 0;
@@ -339,9 +433,22 @@ class AutoSkipWatcher {
       this.adCounterIncremented = false;
     }
 
-    if (clickedSkip && !this.adCounterIncremented) {
+    // Re-assert both features every tick while an ad runs: YouTube swaps
+    // video elements and overlays mid-ad, and settings can change live.
+    if (adPresent) {
+      if (this.muteAdSound) this.applyMuteFeature();
+      else this.restoreVideoMute();
+
+      if (this.blurAds) this.applyBlurFeature();
+      else this.removeBlurFeature();
+    }
+
+    // Only a click on a KNOWN skip button can ever be counted. Heuristic
+    // clicks are emergency attempts, not reliable statistics — counting them
+    // made ads that ended naturally register as successful skips.
+    if (clickedSkip === "ad-skip" && adPresent && !this.adCounterIncremented) {
       this.adCounterIncremented = true;
-      this.scheduleCounterIncrement();
+      this.verifyAndCountSkip();
     }
 
     this.checkSelectorHealth(adPresent);
@@ -356,7 +463,7 @@ class AutoSkipWatcher {
       if (!player) return false;
 
       const hasAdClass = AD_CLASS_NAMES.some((name) =>
-        player.classList.contains(name)
+        player.classList.contains(name),
       );
       if (hasAdClass) return true;
 
@@ -388,36 +495,283 @@ class AutoSkipWatcher {
 
   // ---------------------------------------------------------------- skipping
 
-  /** Returns true when a skip button was actually clicked in this tick. */
-  private scanAndClickSkipButton(): boolean {
+  /**
+   * Behaviour depends on the three-state skip mode:
+   *  off    — no scanning at all (cheapest path)
+   *  assist — locate the button and highlight it; the user clicks it
+   *  auto   — real click dispatched by the background via chrome.debugger,
+   *           with the synthetic click kept as a fallback
+   */
+  private scanAndClickSkipButton(adPresent: boolean): SkipClickSource {
+    if (this.skipMode === "off") {
+      this.removeHighlight();
+      return null;
+    }
+
     const player = this.getPlayer();
-    if (!player) return false;
+    if (!player) return null;
 
-    const candidates = new Set<HTMLElement>();
+    const precise = this.queryCandidates(player, AD_SKIP_SELECTORS);
+    const preciseReady = precise.find((candidate) =>
+      this.isButtonReady(
+        candidate.closest<HTMLElement>('button, [role="button"]') ?? candidate,
+      ),
+    );
 
-    for (const selector of SKIP_BUTTON_SELECTORS) {
+    if (this.skipMode === "assist") {
+      const target = preciseReady
+        ? (preciseReady.closest<HTMLElement>('button, [role="button"]') ??
+          preciseReady)
+        : null;
+      if (target) this.highlightButton(target);
+      else this.removeHighlight();
+      return null;
+    }
+
+    // ---- auto mode ----
+    this.removeHighlight();
+
+    if (preciseReady) {
+      const target =
+        preciseReady.closest<HTMLElement>('button, [role="button"]') ??
+        preciseReady;
+      if (this.canClickAgain(target)) {
+        this.requestTrustedClick(target);
+        logDebug("Video-ad skip button clicked");
+        return "ad-skip";
+      }
+    }
+
+    if (!adPresent) return null;
+
+    const auxiliary = this.queryCandidates(player, [
+      ...SURVEY_SKIP_SELECTORS,
+      ...OVERLAY_CLOSE_SELECTORS,
+    ]);
+    if (this.clickFirstReady(auxiliary)) {
+      logDebug("Auxiliary ad control clicked (not counted)");
+      return "auxiliary";
+    }
+
+    const fallback = this.queryCandidates(player, FALLBACK_SKIP_SELECTORS);
+    if (this.clickFirstReady(fallback)) {
+      logDebug("Fallback skip control clicked (not counted)");
+      return "fallback";
+    }
+
+    if (this.clickFirstReady(this.collectHeuristicCandidates(player))) {
+      logDebug("Heuristic skip control clicked (not counted)");
+      return "fallback";
+    }
+
+    return null;
+  }
+
+  // -------------------------------------------------- trusted click (auto)
+
+  /**
+   * Asks the background service worker to dispatch a real input event at the
+   * button's centre. Falls back to the synthetic click when the debugger path
+   * is unavailable, and downgrades to "assist" when the optional permission
+   * was denied or revoked.
+   */
+  private requestTrustedClick(button: HTMLElement) {
+    const rect = button.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+
+    const sendMessage = this.api?.runtime?.sendMessage;
+    if (!sendMessage || this.trustedClickPending) {
+      this.clickSkipButtonImmediately(button);
+      return;
+    }
+
+    this.trustedClickPending = true;
+
+    void (async () => {
       try {
-        player
-          .querySelectorAll<HTMLElement>(selector)
-          .forEach((button) => candidates.add(button));
-      } catch (error) {
-        logWarn("Failed to query skip buttons", error);
-      }
-    }
+        const response = (await this.api!.runtime.sendMessage({
+          type: "SKIP_AD_TRUSTED_CLICK",
+          x,
+          y,
+        })) as { success?: boolean; reason?: string } | undefined;
 
-    if (candidates.size === 0) {
-      this.collectHeuristicCandidates(player).forEach((b) => candidates.add(b));
-    }
+        if (response?.success) {
+          this.showToast();
+          return;
+        }
 
-    for (const button of candidates) {
-      if (this.isButtonReady(button)) {
+        if (response?.reason === "unexpected-missing-permission") {
+          // Should never happen: `debugger` is a required manifest permission.
+          // Log and skip this attempt only — keep the user's mode untouched.
+          logWarn(
+            "Debugger permission unexpectedly missing — skipping this click",
+          );
+          return;
+        }
+
+        // Any other failure: the synthetic click is still better than nothing.
         this.clickSkipButtonImmediately(button);
-        logDebug("Skip button clicked");
-        return true;
+      } catch (error) {
+        logWarn("Trusted click request failed", error);
+        this.clickSkipButtonImmediately(button);
+      } finally {
+        this.trustedClickPending = false;
       }
-    }
+    })();
+  }
 
+  // ------------------------------------------------------ assist highlight
+
+  private ensureInjectedStyle() {
+    if (document.getElementById(INJECTED_STYLE_ID)) return;
+
+    const style = document.createElement("style");
+    style.id = INJECTED_STYLE_ID;
+    style.textContent = `
+@keyframes autoskip-highlight-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.55); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 0, 0, 0); }
+}`;
+    (document.head ?? document.documentElement).appendChild(style);
+  }
+
+  /** Draws a separate pulsing ring over the button; YouTube's DOM is untouched. */
+  private highlightButton(button: HTMLElement) {
+    try {
+      const player = this.getPlayer();
+      if (!player) return;
+
+      this.ensureInjectedStyle();
+
+      let ring = document.getElementById(
+        HIGHLIGHT_OVERLAY_ID,
+      ) as HTMLDivElement | null;
+
+      if (!ring) {
+        ring = document.createElement("div");
+        ring.id = HIGHLIGHT_OVERLAY_ID;
+        ring.style.position = "absolute";
+        ring.style.pointerEvents = "none";
+        ring.style.zIndex = "60";
+        ring.style.borderRadius = "18px";
+        ring.style.border = "2px solid rgba(255, 0, 0, 0.9)";
+        ring.style.animation =
+          "autoskip-highlight-pulse 1.4s ease-out infinite";
+
+        if (getComputedStyle(player).position === "static") {
+          player.style.position = "relative";
+        }
+        player.appendChild(ring);
+      }
+
+      const playerRect = player.getBoundingClientRect();
+      const rect = button.getBoundingClientRect();
+      ring.style.display = "block";
+      ring.style.left = `${rect.left - playerRect.left - 2}px`;
+      ring.style.top = `${rect.top - playerRect.top - 2}px`;
+      ring.style.width = `${rect.width}px`;
+      ring.style.height = `${rect.height}px`;
+    } catch (error) {
+      logWarn("Failed to highlight skip button", error);
+    }
+  }
+
+  private removeHighlight() {
+    const ring = document.getElementById(HIGHLIGHT_OVERLAY_ID);
+    if (ring) (ring as HTMLElement).style.display = "none";
+  }
+
+  // ------------------------------------------------------------- auto toast
+
+  private toastTimeout: number | null = null;
+
+  private showToast() {
+    try {
+      const player = this.getPlayer();
+      if (!player) return;
+
+      let toast = document.getElementById(TOAST_ID) as HTMLDivElement | null;
+      if (!toast) {
+        toast = document.createElement("div");
+        toast.id = TOAST_ID;
+        toast.style.position = "absolute";
+        toast.style.left = "16px";
+        toast.style.bottom = "64px";
+        toast.style.zIndex = "70";
+        toast.style.padding = "8px 12px";
+        toast.style.borderRadius = "8px";
+        toast.style.background = "rgba(0, 0, 0, 0.8)";
+        toast.style.color = "#fff";
+        toast.style.font = "500 13px/1.4 Roboto, Arial, sans-serif";
+        toast.style.pointerEvents = "none";
+
+        if (getComputedStyle(player).position === "static") {
+          player.style.position = "relative";
+        }
+        player.appendChild(toast);
+      }
+
+      toast.textContent = this.toastMessage();
+      toast.style.display = "block";
+
+      if (this.toastTimeout !== null) window.clearTimeout(this.toastTimeout);
+      this.toastTimeout = window.setTimeout(() => {
+        const node = document.getElementById(TOAST_ID);
+        if (node) (node as HTMLElement).style.display = "none";
+      }, 2000);
+    } catch (error) {
+      logWarn("Failed to show toast", error);
+    }
+  }
+
+  private toastMessage(): string {
+    const lang = (document.documentElement.lang || "").toLowerCase();
+    return lang.startsWith("ar")
+      ? "تم تخطي الإعلان تلقائيًا"
+      : "Ad skipped automatically";
+  }
+
+  private queryCandidates(
+    player: HTMLElement,
+    selectors: readonly string[],
+  ): HTMLElement[] {
+    try {
+      return Array.from(
+        player.querySelectorAll<HTMLElement>(selectors.join(",")),
+      );
+    } catch (error) {
+      logWarn("Failed to query skip controls", error);
+      return [];
+    }
+  }
+
+  private clickFirstReady(candidates: Iterable<HTMLElement>): boolean {
+    for (const candidate of candidates) {
+      const button =
+        candidate.closest<HTMLElement>('button, [role="button"]') ?? candidate;
+      if (!this.isButtonReady(button) || !this.canClickAgain(button)) continue;
+      this.clickSkipButtonImmediately(button);
+      return true;
+    }
     return false;
+  }
+
+  /**
+   * Prevents hammering the same element on every tick. A real skip removes the
+   * ad immediately; repeated clicks on a non-functional match only add noise
+   * and made the counter fire on ads that simply ended on their own.
+   */
+  private readonly lastClickAt = new WeakMap<HTMLElement, number>();
+
+  private canClickAgain(button: HTMLElement): boolean {
+    const now = Date.now();
+    const previous = this.lastClickAt.get(button);
+    if (previous !== undefined && now - previous < CLICK_COOLDOWN_MS) {
+      return false;
+    }
+    this.lastClickAt.set(button, now);
+    return true;
   }
 
   /**
@@ -427,7 +781,7 @@ class AutoSkipWatcher {
   private collectHeuristicCandidates(player: HTMLElement): HTMLElement[] {
     try {
       const nodes = player.querySelectorAll<HTMLElement>(
-        'button, [role="button"]'
+        'button, [role="button"]',
       );
       const matches: HTMLElement[] = [];
 
@@ -441,6 +795,8 @@ class AutoSkipWatcher {
           .toLowerCase();
 
         if (!label || label.length > MAX_HEURISTIC_LABEL_LENGTH) return;
+        // "Skip intro", chapter skipping, etc. are not ad-skip buttons.
+        if (SKIP_EXCLUDE_KEYWORDS.some((word) => label.includes(word))) return;
         if (SKIP_KEYWORDS.some((keyword) => label.includes(keyword))) {
           matches.push(node);
         }
@@ -460,7 +816,8 @@ class AutoSkipWatcher {
       const style = window.getComputedStyle(button);
       const rect = button.getBoundingClientRect();
 
-      if (style.display === "none" || style.visibility === "hidden") return false;
+      if (style.display === "none" || style.visibility === "hidden")
+        return false;
       if (parseFloat(style.opacity) <= 0.1) return false;
       if (rect.width <= 0 || rect.height <= 0) return false;
       if (style.pointerEvents === "none") return false;
@@ -489,7 +846,7 @@ class AutoSkipWatcher {
 
       button.dispatchEvent(new MouseEvent("mouseover", base));
       button.dispatchEvent(
-        new MouseEvent("mousedown", { ...base, button: 0, buttons: 1 })
+        new MouseEvent("mousedown", { ...base, button: 0, buttons: 1 }),
       );
       button.dispatchEvent(new MouseEvent("mouseup", { ...base, button: 0 }));
       button.click();
@@ -505,8 +862,18 @@ class AutoSkipWatcher {
 
   // ------------------------------------------------------------------- mute
 
+  /**
+   * Some ad formats render into a different <video> than the main one, so
+   * fall back to any video inside the player.
+   */
   private getVideoElement(): HTMLVideoElement | null {
-    return document.querySelector<HTMLVideoElement>(VIDEO_PLAYER_SELECTOR);
+    const main = document.querySelector<HTMLVideoElement>(
+      VIDEO_PLAYER_SELECTOR,
+    );
+    if (main) return main;
+
+    const player = this.getPlayer();
+    return player?.querySelector<HTMLVideoElement>("video") ?? null;
   }
 
   private applyMuteFeature() {
@@ -543,7 +910,7 @@ class AutoSkipWatcher {
   /** Blur lives on a separate overlay; the <video> element is never touched. */
   private ensureBlurOverlay(): HTMLDivElement | null {
     const existing = document.getElementById(
-      BLUR_OVERLAY_ID
+      BLUR_OVERLAY_ID,
     ) as HTMLDivElement | null;
     if (existing) return existing;
 
@@ -579,6 +946,26 @@ class AutoSkipWatcher {
 
   // ---------------------------------------------------------------- counter
 
+  /**
+   * A click alone proves nothing: count the skip only after the ad actually
+   * disappears within a short verification window. Otherwise reset the flag
+   * so a later, real skip can still be counted.
+   */
+  private verifyAndCountSkip() {
+    if (this.contextInvalidated) return;
+
+    window.setTimeout(() => {
+      if (this.contextInvalidated) return;
+
+      this.invalidatePlayerCache();
+      if (!this.isAdCurrentlyPlaying()) {
+        this.scheduleCounterIncrement();
+      } else {
+        this.adCounterIncremented = false;
+      }
+    }, SKIP_VERIFICATION_DELAY_MS);
+  }
+
   private scheduleCounterIncrement() {
     if (this.pendingCounterUpdate || this.contextInvalidated) return;
 
@@ -598,25 +985,27 @@ class AutoSkipWatcher {
   private incrementSkipCounter() {
     if (!this.api?.storage?.local || this.contextInvalidated) return;
 
-    try {
-      this.api.storage.local.get([ADS_SKIPPED_KEY], (result) => {
-        if (this.checkForErrors() || this.contextInvalidated) return;
+    void (async () => {
+      try {
+        const result = await storageGet("local", [ADS_SKIPPED_KEY]);
+        if (this.contextInvalidated) return;
 
         const current =
           typeof result[ADS_SKIPPED_KEY] === "number"
             ? (result[ADS_SKIPPED_KEY] as number)
             : 0;
 
-        this.api!.storage.local.set({ [ADS_SKIPPED_KEY]: current + 1 }, () => {
-          if (!this.checkForErrors()) {
-            this.lastCounterUpdate = Date.now();
-            logDebug("Skip counter:", current + 1);
-          }
+        const ok = await storageSet("local", {
+          [ADS_SKIPPED_KEY]: current + 1,
         });
-      });
-    } catch (error) {
-      this.logError("Failed to increment counter", error);
-    }
+        if (ok) {
+          this.lastCounterUpdate = Date.now();
+          logDebug("Skip counter:", current + 1);
+        }
+      } catch (error) {
+        this.logError("Failed to increment counter", error);
+      }
+    })();
   }
 
   // ------------------------------------------------------- selector health
@@ -629,38 +1018,21 @@ class AutoSkipWatcher {
     const player = this.getPlayer();
     if (!player) return;
 
-    const found = SKIP_BUTTON_SELECTORS.some(
-      (selector) => player.querySelector(selector) !== null
+    const found = AD_SKIP_SELECTORS.some(
+      (selector) => player.querySelector(selector) !== null,
     );
     if (found) return;
 
     this.staleSignalSent = true;
-    try {
-      this.api?.storage?.local?.set({
-        [SELECTORS_STALE_KEY]: { detectedAt: Date.now() },
-      });
-      logWarn("Skip selectors may be stale — no matching button during a long ad");
-    } catch (error) {
-      logWarn("Failed to store stale-selector signal", error);
-    }
+    void storageSet("local", {
+      [SELECTORS_STALE_KEY]: { detectedAt: Date.now() },
+    });
+    logWarn(
+      "Skip selectors may be stale — no matching button during a long ad",
+    );
   }
 
   // ----------------------------------------------------------------- errors
-
-  private checkForErrors(): boolean {
-    const lastError = this.api?.runtime?.lastError;
-    if (!lastError) return false;
-
-    const message = lastError.message || "";
-    if (message.includes("Extension context invalidated")) {
-      this.contextInvalidated = true;
-      this.cleanup();
-      return true;
-    }
-
-    logWarn("Runtime error:", message);
-    return true;
-  }
 
   private logError(message: string, error: unknown) {
     const text =

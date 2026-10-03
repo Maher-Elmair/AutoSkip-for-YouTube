@@ -4,12 +4,17 @@ import {
   WATCHER_STORAGE_KEY,
 } from "@/constants/storage";
 import { resolveBrowserApi } from "@/extension/shared/browserApi";
-import { logWarn } from "@/extension/shared/logger";
+import {
+  onStorageChanged,
+  storageGet,
+  storageSet,
+} from "@/extension/shared/storage";
 
 type StorageListener = (enabled: boolean) => void;
 
 const FALLBACK_KEY = `${LOCAL_STORAGE_NAMESPACE}:${WATCHER_STORAGE_KEY}`;
 
+const hasExtensionStorage = () => !!resolveBrowserApi()?.storage?.sync;
 
 const readFromFallback = (): boolean => {
   if (typeof window === "undefined") {
@@ -29,46 +34,26 @@ const writeToFallback = (value: boolean) => {
 };
 
 export const readWatcherState = async (): Promise<boolean> => {
-  const api = resolveBrowserApi();
-
-  if (!api?.storage?.sync) {
+  if (!hasExtensionStorage()) {
     return readFromFallback();
   }
 
-  return new Promise((resolve) => {
-    api.storage.sync.get([WATCHER_STORAGE_KEY], (result) => {
-      const storedValue = result[WATCHER_STORAGE_KEY];
-      if (api.runtime?.lastError) {
-        logWarn("Failed to read watcher flag:", api.runtime.lastError.message);
-        resolve(readFromFallback());
-        return;
-      }
+  const result = await storageGet("sync", [WATCHER_STORAGE_KEY]);
+  const storedValue = result[WATCHER_STORAGE_KEY];
 
-      resolve(
-        typeof storedValue === "boolean" ? storedValue : DEFAULT_WATCHER_STATE
-      );
-    });
-  });
+  return typeof storedValue === "boolean" ? storedValue : DEFAULT_WATCHER_STATE;
 };
 
 export const writeWatcherState = async (enabled: boolean): Promise<void> => {
-  const api = resolveBrowserApi();
-
-  if (!api?.storage?.sync) {
+  if (!hasExtensionStorage()) {
     writeToFallback(enabled);
     return;
   }
 
-  await new Promise<void>((resolve) => {
-    api.storage.sync.set({ [WATCHER_STORAGE_KEY]: enabled }, () => {
-      if (api.runtime?.lastError) {
-        logWarn("Failed to persist watcher flag:", api.runtime.lastError.message);
-      } else {
-        writeToFallback(enabled);
-      }
-      resolve();
-    });
-  });
+  const ok = await storageSet("sync", { [WATCHER_STORAGE_KEY]: enabled });
+  if (ok) {
+    writeToFallback(enabled);
+  }
 };
 
 export const onWatcherStateChange = (
@@ -91,20 +76,10 @@ export const onWatcherStateChange = (
     return () => undefined;
   }
 
-  const handleExtensionChange = (
-    changes: Record<string, chrome.storage.StorageChange>,
-    areaName: string
-  ) => {
-    if (areaName !== "sync") {
-      return;
-    }
-
+  return onStorageChanged("sync", (changes) => {
     const change = changes[WATCHER_STORAGE_KEY];
     if (change && typeof change.newValue === "boolean") {
       listener(change.newValue);
     }
-  };
-
-  api.storage.onChanged.addListener(handleExtensionChange);
-  return () => api.storage.onChanged.removeListener(handleExtensionChange);
+  });
 };

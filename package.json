@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && vite build -c vite.content.config.ts && vite build -c vite.background.config.ts",
+    "build:dev": "vite build --mode development && vite build -c vite.content.config.ts --mode development && vite build -c vite.background.config.ts --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
   },

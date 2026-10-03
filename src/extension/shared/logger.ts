@@ -3,7 +3,7 @@
  * Routine events go through logDebug() and stay silent in production.
  * Only real failures go through logWarn().
  */
-export const DEBUG = false;
+export const DEBUG = true;
 
 const PREFIX = "[autoskip]";
 

@@ -5,23 +5,37 @@
   "short_name": "AutoSkip",
   "description": "Automatically clicks the official \"Skip Ads\" button on YouTube as soon as it appears.",
   "version": "1.0.2",
-  "permissions": ["storage"],
-  "host_permissions": ["*://*.youtube.com/*"],
+  "permissions": [
+    "storage",
+    "debugger"
+  ],
+  
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "*://*.youtube-nocookie.com/*"
+  ],
   "background": {
     "service_worker": "background.js",
-    "type": "module",
-    "scripts": ["background.js"]
+    "type": "module"
   },
   "content_scripts": [
     {
       "matches": [
-        "*://www.youtube.com/watch*",
-        "*://www.youtube.com/embed/*",
-        "*://m.youtube.com/watch*"
+        "*://*.youtube.com/*",
+        "*://*.youtube-nocookie.com/embed/*"
       ],
-      "js": ["content.js"],
-      "run_at": "document_end",
-      "all_frames": false
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false,
+      "exclude_matches": [
+        "*://*.youtube.com/feed/downloads*",
+        "*://*.youtube.com/account*",
+        "*://*.youtube.com/premium*",
+        "*://studio.youtube.com/*",
+        "*://music.youtube.com/*"
+      ]
     }
   ],
   "action": {

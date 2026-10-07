@@ -4,12 +4,11 @@
 </h1>
 <p align="center">
   <em>
-    A smart and lightweight Chrome extension that automatically skips YouTube ads, mutes ads when needed, 
-    and slightly reduces ad visibility using blur. 
-    It never deletes ads and only interacts with the official “Skip Ads” button.
+    A smart and lightweight Chrome extension that helps you skip YouTube ads using multiple skip modes,
+    from highlighting the Skip Ad button to clicking it automatically when it appears.
+    It never deletes or blocks ads and only interacts with YouTube's official "Skip Ad" button.
   </em>
 </p>
-
 
 <p align="center">
   <img src="https://img.shields.io/badge/Chrome-Extension-4285F4?style=for-the-badge&logo=google-chrome" />
@@ -22,11 +21,25 @@
 
 ## ✨ Overview
 
-**AutoSkip for YouTube** is a modern **Chrome Extension** built with **React** and **TypeScript**  
-that enhances your YouTube watching experience by providing full control over ads while keeping content intact.  
+**AutoSkip for YouTube** is a modern **Chrome Extension** built with **React** and **TypeScript**
+that gives you flexible control over YouTube's **Skip Ad** button without removing or blocking ads.
 
-It **automatically clicks the "Skip" button** as soon as it appears in YouTube videos — it **does not remove ads**  
-and **fully complies with YouTube's policies**.
+### ⏭️ Skip Modes
+
+AutoSkip provides multiple ways to handle skippable ads:
+
+* 👆 **Auto Mode** — Automatically clicks the **Skip Ad** button as soon as it appears.
+* ⚡ **Assist Mode** — Highlights the **Skip Ad** button when it appears, so you can click it yourself.
+* ⏹️ **Off Mode** — Leaves the **Skip Ad** button completely untouched.
+
+The extension only interacts with YouTube's official **"Skip Ad"** button.
+It **does not remove, block, or hide ads**.
+
+---
+
+## 📸 Preview
+
+![AutoSkip for YouTube Preview](public/assets/screenshots/AutoSkip-for-YouTube_preview.png)
 
 ---
 
@@ -34,14 +47,16 @@ and **fully complies with YouTube's policies**.
 
 | Feature | Description |
 |------|------------|
-| ⏭ **Auto Skip Ads** | Automatically clicks the *Skip Ad* button as soon as it appears |
-| 🔇 **Mute Ads** | Option to mute ads when skipping is not available |
-| 🌫 **Blur Ads** | Option to blur ads instead of removing them, reducing distraction while preserving content |
+| ⏭ **Three-Mode Ad Skipping** | Choose how ads are skipped: **Off** (extension never touches the button), **Assist** (highlights the Skip button so you click it yourself — no extra permission needed), or **Auto** (clicks it for you automatically) |
+| 🛡 **Transparent Permission Prompt** | Before enabling Auto mode, a clear in-app dialog explains exactly what will happen — before Chrome's own technical permission prompt ever appears |
+| 🔇 **Mute Ads** | Automatically mutes ad audio |
+| 🌫 **Blur Ads** | Blurs ad videos instead of removing them, reducing distraction while preserving content |
 | 🧮 **Ads Skipped Counter** | Keeps track of the total number of ads successfully skipped |
-| 🎛 **Enable / Disable Toggle** | Simple switch to turn the extension on or off |
-| 🌍 **Multi-language Support** | Built-in internationalization using **i18next** |
-| 🎨 **Modern UI** | Clean UI built with Tailwind CSS and Radix UI |
-| ⚡ **High Performance** | Lightweight logic with minimal impact on browser performance |
+| ⚠️ **Selector Health Warning** | Detects when YouTube changes its layout and a Skip button can no longer be found, and surfaces a warning in the popup |
+| 🎛 **Master Enable / Disable Toggle** | One switch to turn the whole extension on or off |
+| 🌍 **Multi-language Support** | Built-in internationalization using **i18next** (English & Arabic, with full RTL support) |
+| 🎨 **Modern UI** | Clean UI built with Tailwind CSS and Radix UI, with Dark/Light theme support |
+| ⚡ **High Performance** | Mutation-observer driven detection with a safety-net interval only as a fallback — minimal impact on browser performance |
 
 ---
 
@@ -50,11 +65,12 @@ and **fully complies with YouTube's policies**.
 | Category | Tools & Libraries |
 |-------|------------------|
 | **Core** | React 19.2.0, TypeScript 5.9.3, Vite 7.2.2 |
-| **Extension APIs** | Chrome Extensions API |
+| **Extension APIs** | Chrome Extensions API (`storage`, `debugger`) |
 | **UI** | Tailwind CSS, Shadcn / UI, Lucide Icons |
-| **State & Logic** | Custom logic + Chrome storage |
+| **State & Logic** | Custom logic + Chrome storage (`sync` for settings, `local` for the counter) |
 | **Animations** | Motion |
 | **Internationalization** | i18next, react-i18next |
+| **Testing** | Playwright (selector health checks against the live YouTube DOM) |
 
 ---
 
@@ -68,29 +84,31 @@ AutoSkip-for-YouTube/
 │   │   ├── shared/          # Shared / common components
 │   │   └── ui/              # Design system & primitive UI components
 │   ├── constants/           # App-wide constants & enums
-│   ├── contexts/            # React contexts (theme, settings, language)
+│   ├── contexts/            # React contexts (theme)
 │   ├── extension/           # Chrome extension logic
 │   │   ├── background.ts    # Background service worker
-│   │   └── content.ts       # Content script (YouTube DOM interaction)
-│   ├── hooks/               # Custom React hooks
-│   ├── i18n/                # i18next configuration & initialization
-│   ├── lib/                 # Shared libraries & helpers
-│   ├── types/               # Global TypeScript types
-│   ├── utils/               # Utility functions
-│   ├── App.tsx              # Popup root component
-│   └── main.tsx             # React entry point
+│   │   ├── content.ts       # Content script (YouTube DOM interaction)
+│   │   └── shared/           # Selectors, storage helpers, logger
+│   ├── hooks/                # Custom React hooks (watcher state, skip mode, theme)
+│   ├── i18n/                 # i18next configuration & initialization
+│   ├── lib/                  # Shared libraries & helpers
+│   ├── types/                 # Global TypeScript types
+│   ├── utils/                 # Utility functions
+│   ├── App.tsx                # Popup root component
+│   └── main.tsx                # React entry point
 │
 ├── public/
-│   ├── _locales/            # Chrome extension metadata translations
+│   ├── _locales/              # Chrome extension metadata translations
 │   ├── assets/
-│   │   ├── icons/           # Extension icons
-│   │   └── screenshots/     # README screenshots
-│   ├── locales/             # UI translations (design text & labels)
-│   └── manifest.json        # Chrome extension manifest
+│   │   ├── icons/              # Extension icons
+│   │   └── screenshots/        # README screenshots
+│   ├── locales/                # UI translations (design text & labels)
+│   └── manifest.json           # Chrome extension manifest
 │
-├── vite.config.ts           # Vite base config (popup UI)
-├── vite.content.config.ts   # Vite config for content script
-├── vite.background.config.ts# Vite config for background worker
+├── tests/                      # Playwright selector health tests
+├── vite.config.ts              # Vite base config (popup UI)
+├── vite.content.config.ts      # Vite config for content script
+├── vite.background.config.ts   # Vite config for background worker
 └── package.json
 
 ```
@@ -105,54 +123,38 @@ AutoSkip-for-YouTube/
 | 🧩 **Accessible Components** | Powered by Radix UI                  |
 | 📱 **Responsive Popup**      | Works perfectly in Chrome popup size |
 | ✨ **Smooth Animations**     | Motion-based interactions            |
+| 🔁 **RTL-aware**             | Mirrors layout, switches, and the Skip-mode highlight correctly in Arabic |
 
 ---
 
 ## 🔒 Permissions & Security
 
+| Permission | Why it's needed |
+| ---------- | ---------------- |
+| `storage`  | Saves your settings (skip mode, mute, blur, language, theme) and the ads-skipped counter locally |
+| `host_permissions` (`*.youtube.com`, `*.youtube-nocookie.com`) | Lets the content script detect and interact with the Skip button on YouTube pages only |
+| `debugger` | Used **only** in Auto mode, and only for the instant it dispatches a real click on the Skip button. You are shown an in-app explanation before this is ever used, and you can switch back to Assist or Off at any time |
+
 | Item                     | Details                               |
-| ------------------------ | ------------------------------------- |
-| 🔐 **Permissions**       | Uses only required Chrome permissions |
-| 🛡 **Safe DOM Handling**  | No invasive page modifications        |
-| 🔒 **No Data Tracking**  | No user data collection               |
-| 📝 **Validation**        | Safe logic and controlled execution   |
+| ------------------------ | -------------------------------------- |
+| 🛡 **Safe DOM Handling**  | No invasive page modifications — mute, blur and highlight are applied via separate overlays, never by editing YouTube's own elements |
+| 🔒 **No Data Tracking**  | No user data collection, no external network requests |
+| 📝 **Validation**        | Safe logic and controlled execution, with graceful fallbacks if YouTube changes its layout |
 
 ---
 
-## 📱 UI Preview
+## 📥 Quick Install (No Building Required)
 
-<div align="center">
+> 💡 **Recommended for most users** — download the pre-built extension and load it directly. No Node.js, no terminal, no build step.
 
-### 🌓 Theme Variations
-
-<p align="center">
-  <em>AutoSkip popup UI across themes and languages</em>
-</p>
-
-<table align="center">
-  <tr>
-    <td align="center">
-      <strong>Dark · English</strong><br/>
-      <img src="public/assets/screenshots/dark-en.png" width="200"/>
-    </td>
-    <td align="center">
-      <strong>Light · English</strong><br/>
-      <img src="public/assets/screenshots/light-en.png" width="200"/>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <strong>Dark · Arabic</strong><br/>
-      <img src="public/assets/screenshots/dark-ar.png" width="200"/>
-    </td>
-    <td align="center">
-      <strong>Light · Arabic</strong><br/>
-      <img src="public/assets/screenshots/light-ar.png" width="200"/>
-    </td>
-  </tr>
-</table>
-
-</div>
+| Step | What to do |
+|:---:|---|
+| 1️⃣ | Download the latest `.zip` from the [**Releases page**](https://github.com/Maher-Elmair/AutoSkip-for-YouTube/releases/latest) |
+| 2️⃣ | Extract the zip file to a folder on your computer |
+| 3️⃣ | Open Chrome and go to `chrome://extensions` |
+| 4️⃣ | Enable **Developer mode** (top-right toggle) |
+| 5️⃣ | Click **Load unpacked** and select the extracted folder |
+| 6️⃣ | ✅ Done! The AutoSkip icon now appears in your toolbar |
 
 ---
 
@@ -183,16 +185,24 @@ After build:
 4. Click **Load unpacked**
 5. Select the `dist` folder
 
+### Run Selector Health Tests
+
+```bash
+
+npx playwright install --with-deps chromium
+npx playwright test
+
+```
+
 ---
 
 ## 🛣 Roadmap
 
 | Feature                                 | Status      |
 | --------------------------------------- | ----------- |
-| Improve skip detection reliability      | In progress |
 | Better mute logic for non-skippable ads | Planned     |
-| Blur ad instead of removing it          | Planned     |
-| Statistics & skipped ads counter        | Planned     |
+| Custom delay before skipping            | Planned     |
+| Expanded language support beyond English/Arabic | Planned |
 | Firefox support                         | In progress |
 
 ---
@@ -217,13 +227,14 @@ The following features are planned for future releases to improve flexibility, a
 - Smooth transitions when adjusting transparency
 
 ### ⚙️ General Improvements
-- More stable ad detection logic
+- Continue hardening skip detection against future YouTube layout changes
 - Better handling of YouTube DOM updates
 - Improved performance and lower CPU usage
 
-### ⏱ Custom delay before skipping
+### ⏱ Custom Delay Before Skipping
 - Let users set a personalized delay before the skip action triggers
---- 
+
+---
 
 ## 👨‍💻 Author
 
@@ -238,25 +249,23 @@ The following features are planned for future releases to improve flexibility, a
 
 ## 🌐 Live Demo
 
-🚀 **Try the AutoSkip UI live (Popup Preview):**  
-👉 [AutoSkip.vercel.app](https://autoskip-for-youtube.vercel.app//)
+🚀 **Try the AutoSkip UI live (Popup Preview):**
+👉 [AutoSkip.vercel.app](https://autoskip-for-youtube.vercel.app/)
 
 > This live demo showcases the **popup UI design**, including:
 > - Dark / Light themes
 > - Arabic & English language support
-> - Settings layout and interactions
->
-> ⚠️ Note:  
-> Due to browser security restrictions, the live demo **does not include actual ad-skipping functionality**.  
-> The core extension logic works only inside the browser extension environment.
+> - Settings layout and interactions, including the Skip Mode switch
 
 ---
 
-🙌 **Thank you for visiting!**  
-If you liked the project, please ⭐ the repository!  
+🙌 **Thank you for visiting!**
+If you liked the project, please ⭐ the repository!
 
-Contributions, feedback, and PRs are always welcome 🙏  
-If you have any solutions for the current issues or ideas to help implement the **future enhancements** listed above,  
-don’t hesitate to submit them — I will gladly review and accept them!
+Contributions, feedback, and PRs are always welcome 🙏<br>
+If you have any solutions for the current issues or ideas to help implement the future enhancements listed above,<br>
+don't hesitate to submit them — I will gladly review and accept them!
 
 ---
+
+<h6 align="center"><i>AutoSkip for YouTube — Skip ads the moment the Skip button appears</i></h6>

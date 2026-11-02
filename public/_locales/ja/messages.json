@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AutoSkip for YouTube",
+    "description": "Extension name shown in Chrome UI"
+  },
+  "extensionDescription": {
+    "message": "YouTube の公式「広告をスキップ」ボタンが表示されると、すぐに自動でクリックします。",
+    "description": "Extension description shown in Chrome UI"
+  }
+}

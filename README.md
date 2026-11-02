@@ -54,7 +54,7 @@ It **does not remove, block, or hide ads**.
 | 🧮 **Ads Skipped Counter** | Keeps track of the total number of ads successfully skipped |
 | ⚠️ **Selector Health Warning** | Detects when YouTube changes its layout and a Skip button can no longer be found, and surfaces a warning in the popup |
 | 🎛 **Master Enable / Disable Toggle** | One switch to turn the whole extension on or off |
-| 🌍 **Multi-language Support** | Built-in internationalization using **i18next** (English & Arabic, with full RTL support) |
+| 🌍 **Multi-language Support** | Built-in internationalization using **i18next** (10 languages, with full Arabic RTL support) |
 | 🎨 **Modern UI** | Clean UI built with Tailwind CSS and Radix UI, with Dark/Light theme support |
 | ⚡ **High Performance** | Mutation-observer driven detection with a safety-net interval only as a fallback — minimal impact on browser performance |
 
@@ -91,6 +91,7 @@ AutoSkip-for-YouTube/
 │   │   └── shared/           # Selectors, storage helpers, logger
 │   ├── hooks/                # Custom React hooks (watcher state, skip mode, theme)
 │   ├── i18n/                 # i18next configuration & initialization
+│   ├── locales/              # UI translations (design text & labels)
 │   ├── lib/                  # Shared libraries & helpers
 │   ├── types/                 # Global TypeScript types
 │   ├── utils/                 # Utility functions
@@ -102,10 +103,9 @@ AutoSkip-for-YouTube/
 │   ├── assets/
 │   │   ├── icons/              # Extension icons
 │   │   └── screenshots/        # README screenshots
-│   ├── locales/                # UI translations (design text & labels)
 │   └── manifest.json           # Chrome extension manifest
 │
-├── tests/                      # Playwright selector health tests
+├── tests/                      # Playwright localization and selector health tests
 ├── vite.config.ts              # Vite base config (popup UI)
 ├── vite.content.config.ts      # Vite config for content script
 ├── vite.background.config.ts   # Vite config for background worker
@@ -185,6 +185,37 @@ After build:
 4. Click **Load unpacked**
 5. Select the `dist` folder
 
+### Supported Languages
+
+The popup and Chrome extension metadata support English, Arabic, German, Spanish,
+French, Japanese, Korean, Brazilian Portuguese, Simplified Chinese, and Traditional Chinese.
+The language menu uses native names and supports keyboard navigation and scrolling.
+
+On first use, the popup follows the browser's preferred languages. A manual choice
+is saved locally and takes precedence on future visits. Unsupported languages fall
+back to English. Regional variants use their available translation (for example,
+`fr-CA` uses French and `pt-PT` uses Brazilian Portuguese). Chinese script tags are
+preserved: `zh-Hans` uses Simplified Chinese; `zh-Hant`, `zh-TW`, `zh-HK`, and `zh-MO`
+use Traditional Chinese. An explicit script takes precedence over the region.
+Chrome's extension name and description follow Chrome's UI locale independently
+of the popup's language selection.
+
+To contribute another language:
+
+1. Copy all keys from `src/locales/en/translation.json` to `src/locales/<code>/translation.json` and translate their values.
+2. Add the corresponding `public/_locales/<chrome_locale>/messages.json` using Chrome's locale codes (for example, `zh_CN` instead of `zh-CN`).
+3. Register the translation, native name, and Chrome locale in `src/i18n/languages.ts`; add any required regional aliases to `normalizeLanguage`.
+4. Extend the locale cases in `tests/i18n.spec.ts`, then run the localization tests and production build.
+
+### Run Localization Tests
+
+These tests run against the local popup preview and do not contact YouTube.
+
+```bash
+npx playwright install chromium
+npm run test:i18n
+```
+
 ### Run Selector Health Tests
 
 ```bash
@@ -202,7 +233,7 @@ npx playwright test
 | --------------------------------------- | ----------- |
 | Better mute logic for non-skippable ads | Planned     |
 | Custom delay before skipping            | Planned     |
-| Expanded language support beyond English/Arabic | Planned |
+| Expanded language support beyond English/Arabic | Available (10 languages) |
 | Firefox support                         | In progress |
 
 ---
@@ -211,10 +242,9 @@ npx playwright test
 
 The following features are planned for future releases to improve flexibility, accessibility, and user control:
 
-### 🌍 Expanded Language Support
-- Add more UI languages beyond Arabic and English
-- Improve language detection and fallback handling
-- Community-driven translations
+### 🌍 Community Translations
+- Add further languages and regional variants
+- Refine existing translations with native-speaker feedback
 
 ### 🔊 Ad Volume Control
 - Add a volume slider to control **ad sound level**

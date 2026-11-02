@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AutoSkip for YouTube",
+    "description": "Extension name shown in Chrome UI"
+  },
+  "extensionDescription": {
+    "message": "YouTube의 공식 광고 건너뛰기 버튼이 나타나면 즉시 자동으로 클릭합니다.",
+    "description": "Extension description shown in Chrome UI"
+  }
+}

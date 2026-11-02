@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AutoSkip for YouTube",
+    "description": "Extension name shown in Chrome UI"
+  },
+  "extensionDescription": {
+    "message": "Klickt auf YouTube automatisch auf die offizielle Schaltfläche „Anzeigen überspringen“, sobald sie verfügbar ist.",
+    "description": "Extension description shown in Chrome UI"
+  }
+}

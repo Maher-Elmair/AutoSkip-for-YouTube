@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AutoSkip for YouTube",
+    "description": "Extension name shown in Chrome UI"
+  },
+  "extensionDescription": {
+    "message": "YouTube 官方“跳过广告”按钮出现时立即自动点击。",
+    "description": "Extension description shown in Chrome UI"
+  }
+}

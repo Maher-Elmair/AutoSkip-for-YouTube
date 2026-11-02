@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "AutoSkip for YouTube",
+    "description": "Extension name shown in Chrome UI"
+  },
+  "extensionDescription": {
+    "message": "Hace clic automáticamente en el botón oficial «Saltar anuncios» de YouTube en cuanto está disponible.",
+    "description": "Extension description shown in Chrome UI"
+  }
+}

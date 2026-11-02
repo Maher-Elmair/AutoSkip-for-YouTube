@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "default_locale": "en",
-  "name": "AutoSkip for YouTube",
+  "name": "__MSG_extensionName__",
   "short_name": "AutoSkip",
-  "description": "Automatically clicks the official \"Skip Ads\" button on YouTube as soon as it appears.",
+  "description": "__MSG_extensionDescription__",
   "version": "1.0.2",
   "permissions": [
     "storage",
@@ -40,7 +40,7 @@
   ],
   "action": {
     "default_popup": "index.html",
-    "default_title": "AutoSkip for YouTube",
+    "default_title": "__MSG_extensionName__",
     "default_icon": {
       "16": "assets/icons/icon16.png",
       "48": "assets/icons/icon48.png",

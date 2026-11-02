@@ -1,57 +1,31 @@
-import { useEffect, useRef, useState } from "react";
+import { useId } from "react";
 import { motion } from "motion/react";
 import { Card } from "@/components/ui/card";
-import { Languages, ChevronDown } from "lucide-react";
+import { Languages } from "lucide-react";
 import { containerVariants, itemVariants } from "@/utils/variants";
+import { supportedLanguages } from "@/i18n/languages";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface LanguageSelectorProps {
   currentLanguage: string;
+  direction: "ltr" | "rtl";
   t: (key: string) => string;
   onChangeLanguage: (lng: string) => void;
-  availableLanguages?: { value: string; labelKey: string }[];
 }
 
 const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   currentLanguage,
+  direction,
   t,
   onChangeLanguage,
-  availableLanguages = [],
 }) => {
-  const [open, setOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
-
-  // Primary languages + any additional languages from the Probs language
-  const languages = [
-    { value: "en", label: t("english") },
-    { value: "ar", label: t("arabic") },
-    ...availableLanguages.map((lang) => ({
-      value: lang.value,
-      label: t(lang.labelKey) || lang.value.toUpperCase(),
-    })),
-  ];
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleSelect = (value: string) => {
-    onChangeLanguage(value);
-    setOpen(false);
-  };
-
-  const selectedLabel =
-    languages.find((lang) => lang.value === currentLanguage)?.label ??
-    t("language");
+  const labelId = useId();
 
   return (
     <motion.div
@@ -70,9 +44,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
           transition={{ duration: 0.2 }}
         >
           <Card className="p-6 shadow-md transition-all duration-300 bg-card border-border">
-            <div
-              className="flex items-center gap-2.5 mb-3"
-            >
+            <div className="flex items-center gap-2.5 mb-3">
               <motion.div
                 whileHover={{
                   y: -2,
@@ -84,53 +56,29 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
               >
                 <Languages className="w-5 h-5 text-primary" />
               </motion.div>
-              <label className="text-base text-foreground">
+              <span id={labelId} className="text-base text-foreground">
                 {t("language")}
-              </label>
+              </span>
             </div>
-            <div className="relative text-start" ref={dropdownRef}>
-              <button
-                type="button"
-                onClick={() => setOpen((prev) => !prev)}
-                className={`w-full h-11 bg-input text-foreground border border-border rounded-md px-4 flex items-center justify-between text-sm focus:outline-none focus:ring-2 focus:ring-ring/40`}
-                aria-haspopup="listbox"
-                aria-expanded={open}
+            <Select
+              value={currentLanguage}
+              onValueChange={onChangeLanguage}
+              dir={direction}
+            >
+              <SelectTrigger
+                aria-labelledby={labelId}
+                className="w-full h-11 bg-input text-foreground border-border px-4"
               >
-                <span className="truncate">{selectedLabel}</span>
-                <ChevronDown
-                  className={`w-4 h-4 transition-transform ${
-                    open ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-              {open && (
-                <ul
-                  role="listbox"
-                  className="absolute z-50 mb-2 w-full rounded-lg border border-border bg-popover text-foreground shadow-xl bottom-full start-0 text-start"
-                >
-                  {languages.map((language) => (
-                    <li key={language.value}>
-                      <button
-                        type="button"
-                        className={`w-full px-4 py-2 text-sm hover:bg-accent/70 focus:bg-accent/80 transition flex items-center justify-between ${
-                          currentLanguage === language.value
-                            ? "text-primary font-semibold"
-                            : ""
-                        }`}
-                        onClick={() => handleSelect(language.value)}
-                      >
-                        <span>{language.label}</span>
-                        {currentLanguage === language.value && (
-                          <span className="text-[10px] uppercase tracking-wider">
-                            {t("active")}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent side="top" className="max-h-64">
+                {supportedLanguages.map(({ code, nativeName }) => (
+                  <SelectItem key={code} value={code}>
+                    <bdi lang={code}>{nativeName}</bdi>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Card>
         </motion.div>
       </motion.div>

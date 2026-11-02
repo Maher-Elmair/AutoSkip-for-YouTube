@@ -60,7 +60,7 @@ const SkipModeSwitch: React.FC<SkipModeSwitchProps> = ({
             whileHover={disabled ? undefined : { y: -1 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             className={cn(
-              "relative isolate flex min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden rounded-md border border-transparent px-1 py-2.5 text-[11px] font-medium transition-colors duration-200",
+              "relative isolate flex min-w-0 flex-1 items-center justify-center gap-1 overflow-hidden rounded-md border border-transparent px-1 py-2.5 text-[11px]! font-medium transition-colors duration-200",
               isActive && !isOff ? "text-primary" : "text-muted-foreground",
             )}
           >

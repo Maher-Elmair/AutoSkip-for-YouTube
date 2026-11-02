@@ -1,4 +1,5 @@
 import "./App.css";
+import { useEffect } from "react";
 import LanguageSelector from "@/components/shared/LanguageSelector";
 import { ThemeToggle } from "@/components/shared/ThemeToggle";
 import { Card } from "@/components/ui/card";
@@ -13,9 +14,15 @@ import { itemVariants } from "@/utils/variants";
 
 function App() {
   const { t, i18n } = useTranslation();
-  const isRTL = i18n.language === "ar";
-  const currentLanguage: string = i18n.language;
+  const currentLanguage = i18n.resolvedLanguage || "en";
+  const direction = i18n.dir(currentLanguage);
+  const isRTL = direction === "rtl";
   const { watcherEnabled, setWatcherEnabled, isLoading } = useWatcherSetting();
+
+  useEffect(() => {
+    document.documentElement.lang = currentLanguage;
+    document.documentElement.dir = direction;
+  }, [currentLanguage, direction]);
 
   return (
     <div dir={isRTL ? "rtl" : "ltr"} className="w-full">
@@ -50,6 +57,7 @@ function App() {
           <LanguageSelector
             currentLanguage={currentLanguage}
             onChangeLanguage={i18n.changeLanguage}
+            direction={direction}
             t={t}
           />
         </main>

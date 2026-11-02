@@ -89,7 +89,8 @@ for (const [locale, expected] of browserLocales) {
       await expect(page.locator("html")).toHaveAttribute("lang", expected);
       await expect(page.locator("html")).toHaveAttribute("dir", expected === "ar" ? "rtl" : "ltr");
       await expect(page.getByRole("heading", { name: translations(expected).settings, exact: true })).toBeVisible();
-      await expect(page.getByRole("combobox")).toHaveText(languages.find((language) => language.code === expected)!.name);
+      await expect(page.getByRole("combobox")).toHaveValue(expected);
+      await expect(page.locator("select option:checked")).toHaveText(languages.find((language) => language.code === expected)!.name);
     });
   });
 }
@@ -101,21 +102,20 @@ test("uses a supported secondary browser language before English fallback", asyn
   });
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("lang", "fr");
-  await expect(page.getByRole("combobox")).toHaveText("Français");
+  await expect(page.getByRole("combobox")).toHaveValue("fr");
 });
 
 test("normalizes saved language aliases without losing the Chinese script", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("i18nextLng", "ZH_hAnT_HK"));
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("lang", "zh-TW");
-  await expect(page.getByRole("combobox")).toHaveText("繁體中文");
+  await expect(page.getByRole("combobox")).toHaveValue("zh-TW");
 });
 
 test("every language can be selected and survives a reload", async ({ page }) => {
   await page.goto("/");
   for (const language of languages) {
-    await page.getByRole("combobox").click();
-    await page.getByRole("option", { name: language.name, exact: true }).click();
+    await page.getByRole("combobox").selectOption(language.code);
     await expect(page.locator("html")).toHaveAttribute("lang", language.code);
     await expect(page.locator("html")).toHaveAttribute("dir", language.code === "ar" ? "rtl" : "ltr");
     await expect(page.getByRole("heading", { name: translations(language.code).settings, exact: true })).toBeVisible();
@@ -131,32 +131,38 @@ test("every language can be selected and survives a reload", async ({ page }) =>
       }),
     ), { message: `${language.code} skip-mode labels fit their buttons` }).toBe(true);
     await page.reload();
-    await expect(page.getByRole("combobox")).toHaveText(language.name);
+    await expect(page.getByRole("combobox")).toHaveValue(language.code);
+    await expect(page.locator("select option:checked")).toHaveText(language.name);
     await expect(page.locator("html")).toHaveAttribute("lang", language.code);
   }
 });
 
-test("the expanded menu fits the popup and supports keyboard selection", async ({ page }) => {
+test("the native language control fits the popup and supports keyboard selection", async ({ page }) => {
   await page.goto("/");
   const select = page.getByRole("combobox");
+  await expect(select).toHaveAccessibleName(translations("en").language);
+  await expect(select.locator("option")).toHaveText(languages.map((language) => language.name));
+  expect(await select.locator("option").evaluateAll((options) =>
+    options.map((option) => option.getAttribute("value")),
+  )).toEqual(languages.map((language) => language.code));
+
   await select.scrollIntoViewIfNeeded();
-  await select.focus();
-  await page.keyboard.press("Enter");
-  const menu = page.getByRole("listbox");
-  await expect(menu).toBeVisible();
-  await expect(page.getByRole("option")).toHaveCount(languages.length);
-  await expect.poll(async () => {
-    const bounds = await menu.boundingBox();
-    return bounds !== null && bounds.y >= 0 && bounds.y + bounds.height <= 600;
-  }).toBe(true);
-  await expect(page.getByRole("option", { name: "English", exact: true })).toBeFocused();
-  await page.keyboard.press("End");
-  await expect(page.getByRole("option", { name: languages.at(-1)!.name, exact: true })).toBeFocused();
-  await page.keyboard.press("Enter");
-  await expect(menu).toBeHidden();
-  await expect(select).toHaveText(languages.at(-1)!.name);
-  await select.press("Enter");
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await select.click();
   await page.keyboard.press("Escape");
-  await expect(menu).toBeHidden();
+  await expect(select).toHaveValue("en");
+  await expect.poll(async () => Math.abs(await page.evaluate(() => window.scrollY) - scrollBefore)).toBeLessThanOrEqual(1);
+  await expect.poll(async () => {
+    const bounds = await select.boundingBox();
+    return bounds !== null && bounds.x >= 0 && bounds.x + bounds.width <= 384
+      && bounds.y >= 0 && bounds.y + bounds.height <= 600;
+  }).toBe(true);
+
+  await select.focus();
+  // Native typeahead works without depending on the operating system's menu UI.
+  await page.keyboard.press("p");
+  await expect(select).toHaveValue("pt-BR");
+  await expect(page.locator("html")).toHaveAttribute("lang", "pt-BR");
   await expect(select).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

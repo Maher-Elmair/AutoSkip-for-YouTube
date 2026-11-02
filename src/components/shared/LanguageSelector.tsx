@@ -1,16 +1,9 @@
 import { useId } from "react";
 import { motion } from "motion/react";
 import { Card } from "@/components/ui/card";
-import { Languages } from "lucide-react";
+import { ChevronDown, Languages } from "lucide-react";
 import { containerVariants, itemVariants } from "@/utils/variants";
 import { supportedLanguages } from "@/i18n/languages";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 interface LanguageSelectorProps {
   currentLanguage: string;
@@ -25,7 +18,7 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   t,
   onChangeLanguage,
 }) => {
-  const labelId = useId();
+  const selectId = useId();
 
   return (
     <motion.div
@@ -37,7 +30,6 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       <motion.div variants={itemVariants}>
         <motion.div
           whileHover={{
-            y: -2,
             boxShadow: "0 10px 15px rgba(0,0,0,0.1)",
             borderRadius: "1rem",
           }}
@@ -56,29 +48,31 @@ const LanguageSelector: React.FC<LanguageSelectorProps> = ({
               >
                 <Languages className="w-5 h-5 text-primary" />
               </motion.div>
-              <span id={labelId} className="text-base text-foreground">
+              <label htmlFor={selectId} className="text-base text-foreground">
                 {t("language")}
-              </span>
+              </label>
             </div>
-            <Select
-              value={currentLanguage}
-              onValueChange={onChangeLanguage}
-              dir={direction}
-            >
-              <SelectTrigger
-                aria-labelledby={labelId}
-                className="w-full h-11 bg-input text-foreground border-border px-4"
+            <div className="relative">
+              {/* A native menu also works in Chrome's toolbar popup without
+                  a portalled overlay or document scroll locking. */}
+              <select
+                id={selectId}
+                value={currentLanguage}
+                onChange={(event) => onChangeLanguage(event.target.value)}
+                dir={direction}
+                className="w-full h-11 appearance-none rounded-md border border-border bg-input ps-4 pe-10 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent side="top" className="max-h-64">
                 {supportedLanguages.map(({ code, nativeName }) => (
-                  <SelectItem key={code} value={code}>
-                    <bdi lang={code}>{nativeName}</bdi>
-                  </SelectItem>
+                  <option key={code} value={code} lang={code}>
+                    {nativeName}
+                  </option>
                 ))}
-              </SelectContent>
-            </Select>
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute end-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+            </div>
           </Card>
         </motion.div>
       </motion.div>

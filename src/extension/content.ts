@@ -442,14 +442,10 @@ class AutoSkipWatcher {
 
     // Re-assert both features every tick while an ad runs: YouTube swaps
     // video elements and overlays mid-ad, and settings can change live.
+    this.syncAdMute();
     if (adPresent) {
-      if (this.muteAdSound) this.applyMuteFeature();
-      else this.restoreVideoMute();
-
       if (this.blurAds) this.applyBlurFeature();
       else this.removeBlurFeature();
-    } else {
-      this.restoreVideoMute();
     }
 
     // Only a click on a KNOWN skip button can ever be counted. Heuristic
@@ -875,7 +871,12 @@ class AutoSkipWatcher {
   private readonly syncAdMute = () => {
     if (!this.isEnabled || this.contextInvalidated) return;
     this.invalidatePlayerCache();
-    if (this.muteAdSound && this.isAdCurrentlyPlaying()) {
+    // Ad UI can outlive playback; only player state may control audio.
+    const player = this.getPlayer();
+    const videoAdPresent = AD_CLASS_NAMES.some((name) =>
+      player?.classList.contains(name),
+    );
+    if (this.muteAdSound && videoAdPresent) {
       this.applyMuteFeature();
     } else {
       this.restoreVideoMute();

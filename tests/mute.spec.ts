@@ -55,12 +55,19 @@ test("ad muting and audio restoration do not wait for animation frames or the fa
     badge.style.display = "block";
     await new Promise<void>((resolve) => queueMicrotask(resolve));
     const shownMuted = video.muted;
+    player.classList.add("ad-interrupting");
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const interruptingMuted = video.muted;
+    player.classList.remove("ad-interrupting");
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const staleBadgeRestored = video.muted;
     badge.remove();
     await new Promise<void>((resolve) => queueMicrotask(resolve));
     const removedRestored = video.muted;
     module.remove();
-    return { normalMuted, adMuted, reasserted, restored, badgeMuted, hiddenRestored, shownMuted, removedRestored };
+    return { normalMuted, adMuted, reasserted, restored, badgeMuted, hiddenRestored, shownMuted, interruptingMuted, staleBadgeRestored, removedRestored };
   });
   expect(result).toEqual({ normalMuted: false, adMuted: true, reasserted: true, restored: false,
-    badgeMuted: true, hiddenRestored: false, shownMuted: true, removedRestored: false });
+    badgeMuted: false, hiddenRestored: false, shownMuted: false,
+    interruptingMuted: true, staleBadgeRestored: false, removedRestored: false });
 });

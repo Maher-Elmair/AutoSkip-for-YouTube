@@ -81,15 +81,7 @@ class AutoSkipWatcher {
       await this.loadFeatureSettings();
       this.listenToStorage();
 
-      if (document.readyState === "loading") {
-        document.addEventListener(
-          "DOMContentLoaded",
-          () => {
-            if (this.isEnabled) this.startWatching();
-          },
-          { once: true },
-        );
-      } else if (this.isEnabled) {
+      if (this.isEnabled) {
         this.startWatching();
       }
 
@@ -279,8 +271,16 @@ class AutoSkipWatcher {
 
     try {
       this.observer = new MutationObserver((mutations) => {
-        if (this.hasRelevantMutation(mutations)) this.scheduleTick();
+        if (this.hasRelevantMutation(mutations)) {
+          // Audio must not wait for a frame (which can be suspended in background tabs).
+          this.syncAdMute();
+          this.scheduleTick();
+        }
       });
+
+      document.addEventListener("loadedmetadata", this.syncAdMute, true);
+      document.addEventListener("play", this.syncAdMute, true);
+      document.addEventListener("volumechange", this.syncAdMute, true);
 
       this.observer.observe(root, {
         childList: true,
@@ -314,6 +314,8 @@ class AutoSkipWatcher {
   /** Ignore progress-bar and control animation churn inside the player. */
   private hasRelevantMutation(mutations: MutationRecord[]): boolean {
     const relevantSelector = [
+      PLAYER_SELECTOR,
+      "video",
       ...AD_SKIP_SELECTORS,
       ...SURVEY_SKIP_SELECTORS,
       ...OVERLAY_CLOSE_SELECTORS,
@@ -360,6 +362,9 @@ class AutoSkipWatcher {
 
   private stopWatching() {
     try {
+      document.removeEventListener("loadedmetadata", this.syncAdMute, true);
+      document.removeEventListener("play", this.syncAdMute, true);
+      document.removeEventListener("volumechange", this.syncAdMute, true);
       this.observer?.disconnect();
       this.observer = null;
       this.observerScopedToPlayer = false;
@@ -862,6 +867,17 @@ class AutoSkipWatcher {
 
   // ------------------------------------------------------------------- mute
 
+  /** Keep audio independent of rendering and skip-button scanning. */
+  private readonly syncAdMute = () => {
+    if (!this.isEnabled || this.contextInvalidated) return;
+    this.invalidatePlayerCache();
+    if (this.muteAdSound && this.isAdCurrentlyPlaying()) {
+      this.applyMuteFeature();
+    } else {
+      this.restoreVideoMute();
+    }
+  };
+
   /**
    * Some ad formats render into a different <video> than the main one, so
    * fall back to any video inside the player.
@@ -884,7 +900,7 @@ class AutoSkipWatcher {
       if (this.wasMutedBeforeAd === null) {
         this.wasMutedBeforeAd = video.muted;
       }
-      video.muted = true;
+      if (!video.muted) video.muted = true;
     } catch (error) {
       logWarn("Failed to apply mute feature", error);
     }

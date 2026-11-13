@@ -243,12 +243,12 @@ class AutoSkipWatcher {
     this.cachedPlayer = null;
   }
 
-  /** Coalesces mutation bursts into at most one tick per animation frame. */
+  /** Coalesces mutation bursts without waiting for rendering in background tabs. */
   private scheduleTick() {
     if (this.tickScheduled || !this.isEnabled || this.contextInvalidated)
       return;
     this.tickScheduled = true;
-    window.requestAnimationFrame(() => {
+    queueMicrotask(() => {
       this.tickScheduled = false;
       if (!this.isEnabled || this.contextInvalidated) return;
       try {

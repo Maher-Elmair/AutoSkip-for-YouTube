@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test.use({ channel: "chrome" });
 
-test("ad muting and audio restoration do not wait for animation frames or the fallback interval", async ({ page }) => {
+test("ad muting, audio restoration and skipping do not wait for animation frames or the fallback interval", async ({ page }) => {
   await page.goto("https://www.youtube.com/watch?v=aqz-KE-bpKQ", {
     waitUntil: "domcontentloaded",
   });
@@ -21,6 +21,10 @@ test("ad muting and audio restoration do not wait for animation frames or the fa
     video.muted = false;
     window.requestAnimationFrame = () => 1;
     Object.defineProperty(window, "setInterval", { value: () => 1 });
+    // Enable auto mode without a background worker to exercise the click fallback.
+    Object.defineProperty(window, "chrome", {
+      value: { storage: { sync: { get: async () => ({ watcherEnabled: true, skipMode: "auto" }) } } },
+    });
   });
   await page.evaluate(await readFile(path.resolve("dist/content.js"), "utf8"));
   // Allow bootstrap to finish loading settings asynchronously.
@@ -65,9 +69,21 @@ test("ad muting and audio restoration do not wait for animation frames or the fa
     await new Promise<void>((resolve) => queueMicrotask(resolve));
     const removedRestored = video.muted;
     module.remove();
-    return { normalMuted, adMuted, reasserted, restored, badgeMuted, hiddenRestored, shownMuted, interruptingMuted, staleBadgeRestored, removedRestored };
+    let skipClicks = 0;
+    const skipButton = document.createElement("button");
+    skipButton.className = "ytp-ad-skip-button";
+    skipButton.style.cssText = "display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; width: 80px; height: 30px";
+    skipButton.addEventListener("click", () => { skipClicks++; });
+    player.classList.add("ad-showing");
+    player.append(skipButton);
+    // Flush both the mutation observer and its coalesced tick.
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    skipButton.remove();
+    player.classList.remove("ad-showing");
+    return { normalMuted, adMuted, reasserted, restored, badgeMuted, hiddenRestored, shownMuted, interruptingMuted, staleBadgeRestored, removedRestored, skipClicks };
   });
   expect(result).toEqual({ normalMuted: false, adMuted: true, reasserted: true, restored: false,
     badgeMuted: false, hiddenRestored: false, shownMuted: false,
-    interruptingMuted: true, staleBadgeRestored: false, removedRestored: false });
+    interruptingMuted: true, staleBadgeRestored: false, removedRestored: false, skipClicks: 1 });
 });

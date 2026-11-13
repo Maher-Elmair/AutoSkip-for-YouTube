@@ -286,7 +286,7 @@ class AutoSkipWatcher {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["class"],
+        attributeFilter: ["class", "style", "hidden"],
       });
       this.observerScopedToPlayer = player !== null;
 
@@ -327,11 +327,13 @@ class AutoSkipWatcher {
         const target = mutation.target;
         return (
           target instanceof HTMLElement &&
-          (target.matches(PLAYER_SELECTOR) || target.matches(relevantSelector))
+          (target.matches(PLAYER_SELECTOR) ||
+            target.matches(relevantSelector) ||
+            target.querySelector(AD_INDICATOR_SELECTORS.join(",")) !== null)
         );
       }
 
-      return Array.from(mutation.addedNodes).some((node) => {
+      return [...mutation.addedNodes, ...mutation.removedNodes].some((node) => {
         if (!(node instanceof HTMLElement)) return false;
         return (
           node.matches(relevantSelector) ||

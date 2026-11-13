@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 
 test.use({ channel: "chrome" });
 
-test("ztlumení reklamy nečeká na snímek ani záložní interval", async ({ page }) => {
+test("ad muting and audio restoration do not wait for animation frames or the fallback interval", async ({ page }) => {
   await page.goto("https://www.youtube.com/watch?v=aqz-KE-bpKQ", {
     waitUntil: "domcontentloaded",
   });
@@ -23,7 +23,7 @@ test("ztlumení reklamy nečeká na snímek ani záložní interval", async ({ p
     Object.defineProperty(window, "setInterval", { value: () => 1 });
   });
   await page.evaluate(await readFile(path.resolve("dist/content.js"), "utf8"));
-  // Nech bootstrap dokončit asynchronní načítání nastavení.
+  // Allow bootstrap to finish loading settings asynchronously.
   await page.evaluate(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
   const result = await page.evaluate(async () => {
     const player = document.querySelector<HTMLElement>("#movie_player")!;
@@ -35,9 +35,32 @@ test("ztlumení reklamy nečeká na snímek ani záložní interval", async ({ p
     video.muted = false;
     video.dispatchEvent(new Event("volumechange"));
     const reasserted = video.muted;
+    // An empty ad container can remain visible during regular video playback.
+    const module = document.createElement("div");
+    module.className = "ytp-ad-module video-ads";
+    module.style.cssText = "display: block !important; visibility: visible !important; opacity: 1 !important; width: 100px; height: 100px";
+    player.append(module);
     player.classList.remove("ad-showing");
     await new Promise<void>((resolve) => queueMicrotask(resolve));
-    return { normalMuted, adMuted, reasserted, restored: video.muted };
+    const restored = video.muted;
+    const badge = document.createElement("div");
+    badge.className = "ytp-ad-badge";
+    badge.style.cssText = "display: block; visibility: visible; opacity: 1; width: 50px; height: 20px";
+    module.append(badge);
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const badgeMuted = video.muted;
+    badge.style.display = "none";
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const hiddenRestored = video.muted;
+    badge.style.display = "block";
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const shownMuted = video.muted;
+    badge.remove();
+    await new Promise<void>((resolve) => queueMicrotask(resolve));
+    const removedRestored = video.muted;
+    module.remove();
+    return { normalMuted, adMuted, reasserted, restored, badgeMuted, hiddenRestored, shownMuted, removedRestored };
   });
-  expect(result).toEqual({ normalMuted: false, adMuted: true, reasserted: true, restored: false });
+  expect(result).toEqual({ normalMuted: false, adMuted: true, reasserted: true, restored: false,
+    badgeMuted: true, hiddenRestored: false, shownMuted: true, removedRestored: false });
 });

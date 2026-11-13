@@ -49,8 +49,6 @@ export const FALLBACK_SKIP_SELECTORS = [
 export const AD_INDICATOR_SELECTORS = [
   ".ytp-ad-player-overlay",
   ".ytp-ad-player-overlay-layout",
-  ".ytp-ad-module",
-  ".video-ads",
   ".ytp-ad-text",
   ".ytp-ad-badge",
   ".ytp-ad-preview-container",

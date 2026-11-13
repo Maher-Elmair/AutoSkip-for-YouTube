@@ -446,6 +446,8 @@ class AutoSkipWatcher {
 
       if (this.blurAds) this.applyBlurFeature();
       else this.removeBlurFeature();
+    } else {
+      this.restoreVideoMute();
     }
 
     // Only a click on a KNOWN skip button can ever be counted. Heuristic

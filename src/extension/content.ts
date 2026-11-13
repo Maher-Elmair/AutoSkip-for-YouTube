@@ -47,6 +47,7 @@ class AutoSkipWatcher {
   private intervalId: number | null = null;
   private isEnabled = DEFAULT_WATCHER_STATE;
   private readonly api = resolveBrowserApi();
+  private settingsReady = false;
 
   // Feature settings
   private muteAdSound = true;
@@ -62,8 +63,8 @@ class AutoSkipWatcher {
   private adCounterIncremented = false;
   private staleSignalSent = false;
 
-  // Mute state: a single boolean is enough, video.volume is never touched.
-  private wasMutedBeforeAd: boolean | null = null;
+  // Preserve each video independently, including detached or replaced elements.
+  private readonly mutedVideos = new Map<HTMLVideoElement, boolean>();
 
   // Counter throttling
   private pendingCounterUpdate = false;
@@ -77,12 +78,22 @@ class AutoSkipWatcher {
 
   private async bootstrap() {
     try {
-      await this.readInitialState();
-      await this.loadFeatureSettings();
+      window.addEventListener("beforeunload", () => this.cleanup(), {
+        once: true,
+      });
+      // Observe immediately, but do not modify playback before settings arrive.
+      this.startWatching();
+      await this.loadInitialSettings();
+      if (this.contextInvalidated) return;
+      this.settingsReady = true;
       this.listenToStorage();
 
       if (this.isEnabled) {
         this.startWatching();
+        this.syncAdMute();
+        this.tick();
+      } else {
+        this.stopWatching();
       }
 
       window.addEventListener("yt-navigate-finish", () => {
@@ -92,9 +103,6 @@ class AutoSkipWatcher {
         }
       });
 
-      window.addEventListener("beforeunload", () => this.cleanup(), {
-        once: true,
-      });
     } catch (error) {
       this.logError("Bootstrap failed", error);
     }
@@ -102,27 +110,19 @@ class AutoSkipWatcher {
 
   // ---------------------------------------------------------------- storage
 
-  private async readInitialState() {
-    if (!this.api?.storage?.sync) {
-      this.isEnabled = DEFAULT_WATCHER_STATE;
-      return;
-    }
-
-    const result = await storageGet("sync", [WATCHER_STORAGE_KEY]);
-    const stored = result[WATCHER_STORAGE_KEY];
-    this.isEnabled =
-      typeof stored === "boolean" ? stored : DEFAULT_WATCHER_STATE;
-    logDebug("Watcher initial state:", this.isEnabled);
-  }
-
-  private async loadFeatureSettings() {
+  private async loadInitialSettings() {
     if (!this.api?.storage?.sync) return;
 
     const result = await storageGet("sync", [
+      WATCHER_STORAGE_KEY,
       "muteAdSound",
       "blurAds",
       SKIP_MODE_KEY,
     ]);
+    const stored = result[WATCHER_STORAGE_KEY];
+    this.isEnabled =
+      typeof stored === "boolean" ? stored : DEFAULT_WATCHER_STATE;
+    logDebug("Watcher initial state:", this.isEnabled);
     if (typeof result.muteAdSound === "boolean") {
       this.muteAdSound = result.muteAdSound;
     }
@@ -197,9 +197,10 @@ class AutoSkipWatcher {
    * markup in other UI contexts (e.g. the Premium downloads manager), where
    * clicking or observing caused issue #2. A route check plus a real, loaded
    * <video> inside the player is required before the extension touches
-   * anything.
+   * anything. Audio may opt into the same route/player guard before loading,
+   * so an already identified ad is muted before metadata becomes available.
    */
-  private isActivePlaybackContext(): boolean {
+  private isActivePlaybackContext(requireLoadedVideo = true): boolean {
     const path = window.location.pathname;
     const isPlaybackRoute =
       path.startsWith("/watch") ||
@@ -215,6 +216,7 @@ class AutoSkipWatcher {
 
     const video = container.querySelector<HTMLVideoElement>("video");
     if (!video) return false;
+    if (!requireLoadedVideo) return true;
 
     return (
       video.readyState > 0 ||
@@ -263,11 +265,10 @@ class AutoSkipWatcher {
     if (this.observer || !this.isEnabled) return;
 
     // Scope the observer to the player when it exists; otherwise watch the
-    // body only until the player appears, then re-scope.
+    // document only until the player appears, then re-scope.
     this.invalidatePlayerCache();
     const player = this.getPlayer();
-    const root = player ?? document.body ?? document.documentElement;
-    if (!root) return;
+    const root = player ?? document;
 
     try {
       this.observer = new MutationObserver((mutations) => {
@@ -407,7 +408,7 @@ class AutoSkipWatcher {
    * Skip-button clicking is NEVER gated on ad-detection state.
    */
   private tick() {
-    if (!this.isEnabled || this.contextInvalidated) return;
+    if (!this.settingsReady || !this.isEnabled || this.contextInvalidated) return;
 
     this.invalidatePlayerCache();
 
@@ -869,15 +870,17 @@ class AutoSkipWatcher {
 
   /** Keep audio independent of rendering and skip-button scanning. */
   private readonly syncAdMute = () => {
-    if (!this.isEnabled || this.contextInvalidated) return;
+    if (!this.settingsReady || !this.isEnabled || this.contextInvalidated) return;
     this.invalidatePlayerCache();
     // Ad UI can outlive playback; only player state may control audio.
-    const player = this.getPlayer();
+    const player = this.isActivePlaybackContext(false)
+      ? document.querySelector<HTMLElement>(PLAYER_SELECTOR)
+      : null;
     const videoAdPresent = AD_CLASS_NAMES.some((name) =>
       player?.classList.contains(name),
     );
     if (this.muteAdSound && videoAdPresent) {
-      this.applyMuteFeature();
+      this.applyMuteFeature(player);
     } else {
       this.restoreVideoMute();
     }
@@ -887,23 +890,28 @@ class AutoSkipWatcher {
    * Some ad formats render into a different <video> than the main one, so
    * fall back to any video inside the player.
    */
-  private getVideoElement(): HTMLVideoElement | null {
-    const main = document.querySelector<HTMLVideoElement>(
+  private getVideoElement(player: HTMLElement): HTMLVideoElement | null {
+    const main = player.querySelector<HTMLVideoElement>(
       VIDEO_PLAYER_SELECTOR,
     );
     if (main) return main;
 
-    const player = this.getPlayer();
-    return player?.querySelector<HTMLVideoElement>("video") ?? null;
+    return player.querySelector<HTMLVideoElement>("video");
   }
 
-  private applyMuteFeature() {
+  private applyMuteFeature(player: HTMLElement | null) {
     try {
-      const video = this.getVideoElement();
+      if (!player) return;
+      const video = this.getVideoElement(player);
       if (!video) return;
 
-      if (this.wasMutedBeforeAd === null) {
-        this.wasMutedBeforeAd = video.muted;
+      for (const [previous, wasMuted] of this.mutedVideos) {
+        if (previous === video) continue;
+        previous.muted = wasMuted;
+        this.mutedVideos.delete(previous);
+      }
+      if (!this.mutedVideos.has(video)) {
+        this.mutedVideos.set(video, video.muted);
       }
       if (!video.muted) video.muted = true;
     } catch (error) {
@@ -914,13 +922,10 @@ class AutoSkipWatcher {
   /** Restores exactly the user's own mute choice; volume is never touched. */
   private restoreVideoMute() {
     try {
-      const video = this.getVideoElement();
-      if (!video || this.wasMutedBeforeAd === null) {
-        this.wasMutedBeforeAd = null;
-        return;
+      for (const [video, wasMuted] of this.mutedVideos) {
+        video.muted = wasMuted;
+        this.mutedVideos.delete(video);
       }
-      video.muted = this.wasMutedBeforeAd;
-      this.wasMutedBeforeAd = null;
     } catch (error) {
       logWarn("Failed to restore mute state", error);
     }

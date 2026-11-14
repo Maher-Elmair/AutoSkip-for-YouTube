@@ -185,6 +185,30 @@ After build:
 4. Click **Load unpacked**
 5. Select the `dist` folder
 
+### Build for Firefox
+
+```bash
+npm run build:firefox
+npm run test:firefox-build
+```
+
+The Firefox build is written to `dist-firefox`, separately from the Chromium
+build in `dist`. It uses a background script and does not request the Chromium-only
+`debugger` permission. Auto mode tries a synthetic click once per skip button.
+If the ad and button remain after verification, the button is highlighted for a
+manual click instead of repeated automatic attempts. Assist mode, muting, and
+blur do not require the debugger API.
+
+For a temporary installation, open `about:debugging#/runtime/this-firefox`, click
+**Load Temporary Add-on**, and select `dist-firefox/manifest.json`. The temporary
+installation lasts until Firefox restarts. Test playback and all skip modes in
+Firefox before publishing; build checks do not validate real YouTube behavior.
+
+The **Firefox build** GitHub Actions workflow builds and checks this package on
+pull requests, pushes to `main`, version tags, and manual runs. Download the
+`autoskip-firefox` artifact from the workflow run. This is an unsigned build,
+not a signed Firefox release.
+
 ### Run Selector Health Tests
 
 ```bash

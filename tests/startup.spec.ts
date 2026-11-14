@@ -2,8 +2,6 @@ import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-test.use({ channel: "chrome" });
-
 for (const settings of [
   { watcherEnabled: true, muteAdSound: true },
   { watcherEnabled: false, muteAdSound: true },

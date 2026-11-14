@@ -2,8 +2,6 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { readFile } from "node:fs/promises";
 
-test.use({ channel: "chrome" });
-
 test("ad muting, audio restoration and skipping do not wait for animation frames or the fallback interval", async ({ page }) => {
   await page.goto("https://www.youtube.com/watch?v=aqz-KE-bpKQ", {
     waitUntil: "domcontentloaded",

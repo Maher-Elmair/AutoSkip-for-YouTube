@@ -218,6 +218,19 @@ npx playwright test
 
 ```
 
+The scheduled selector health workflow uses Playwright Chromium for every test;
+no separately installed Google Chrome is required. The live check discovers an
+English Skip control independently of the production class selectors, then
+requires those selectors and the ad state classes to match the observed player.
+It also verifies that the content script started and the blur overlay exists.
+
+If YouTube serves no skippable ad during the observation window, the live check
+fails with `INCONCLUSIVE` rather than claiming the selectors are healthy. Consent,
+network failures, and ad availability can also make the live check inconclusive.
+Failed runs include console output, a screenshot, and page HTML in the
+`selector-health-report` CI artifact. A failed run requires investigation; it does
+not by itself prove that YouTube renamed a class.
+
 ---
 
 ## 🛣 Roadmap

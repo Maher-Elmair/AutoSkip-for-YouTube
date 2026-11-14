@@ -56,6 +56,7 @@ class AutoSkipWatcher {
 
   // Auto mode: one in-flight trusted click at a time.
   private trustedClickPending = false;
+  private firefoxSkipAttempts = new WeakMap<HTMLElement, { assist: boolean }>();
 
   // Ad state
   private isAdPlaying = false;
@@ -165,6 +166,7 @@ class AutoSkipWatcher {
         const modeChange = changes[SKIP_MODE_KEY];
         if (modeChange && isSkipMode(modeChange.newValue)) {
           this.skipMode = modeChange.newValue;
+          this.firefoxSkipAttempts = new WeakMap();
           // Leftover assist highlight must not survive a mode switch.
           if (this.skipMode !== "assist") this.removeHighlight();
           if (this.isEnabled) this.tick();
@@ -287,7 +289,7 @@ class AutoSkipWatcher {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["class", "style", "hidden"],
+        attributeFilter: ["class", "style", "hidden", "disabled", "aria-disabled"],
       });
       this.observerScopedToPlayer = player !== null;
 
@@ -390,6 +392,7 @@ class AutoSkipWatcher {
   }
 
   private resetAdState() {
+    this.firefoxSkipAttempts = new WeakMap();
     this.isAdPlaying = false;
     this.adStartedAt = 0;
     this.adCounterIncremented = false;
@@ -434,6 +437,7 @@ class AutoSkipWatcher {
       this.adCounterIncremented = false;
       this.staleSignalSent = false;
     } else if (!adPresent && this.isAdPlaying) {
+      this.firefoxSkipAttempts = new WeakMap();
       this.isAdPlaying = false;
       this.adStartedAt = 0;
       this.restoreVideoMute();
@@ -541,9 +545,14 @@ class AutoSkipWatcher {
       const target =
         preciseReady.closest<HTMLElement>('button, [role="button"]') ??
         preciseReady;
+      const firefoxAttempt = this.firefoxSkipAttempts.get(target);
+      if (firefoxAttempt) {
+        if (firefoxAttempt.assist) this.highlightButton(target);
+        return null;
+      }
       if (this.canClickAgain(target)) {
         this.requestTrustedClick(target);
-        logDebug("Video-ad skip button clicked");
+        logDebug("Attempting video-ad skip click");
         return "ad-skip";
       }
     }
@@ -586,11 +595,20 @@ class AutoSkipWatcher {
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
 
-    const sendMessage = this.api?.runtime?.sendMessage;
-    if (!sendMessage || this.trustedClickPending) {
+    const runtime = this.api?.runtime;
+    // Firefox has no debugger API: click the current node synchronously rather
+    // than waiting for an unsupported background request while ads swap nodes.
+    const isFirefox = runtime && "getBrowserInfo" in runtime;
+    const sendMessage = runtime?.sendMessage;
+    if (isFirefox) {
+      this.tryFirefoxClick(button);
+      return;
+    }
+    if (!sendMessage) {
       this.clickSkipButtonImmediately(button);
       return;
     }
+    if (this.trustedClickPending) return;
 
     this.trustedClickPending = true;
 
@@ -629,6 +647,25 @@ class AutoSkipWatcher {
 
   // ------------------------------------------------------ assist highlight
 
+  /** Firefox cannot create trusted input; offer manual help after one attempt. */
+  private tryFirefoxClick(button: HTMLElement) {
+    const attempt = { assist: false };
+    this.firefoxSkipAttempts.set(button, attempt);
+    this.clickSkipButtonImmediately(button);
+    window.setTimeout(() => {
+      if (this.firefoxSkipAttempts.get(button) !== attempt) return;
+      if (!this.isEnabled || this.contextInvalidated || this.skipMode !== "auto") return;
+      this.invalidatePlayerCache();
+      if (!this.isAdCurrentlyPlaying() || !this.getPlayer()?.contains(button) || !this.isButtonReady(button)) {
+        this.firefoxSkipAttempts.delete(button);
+        return;
+      }
+      attempt.assist = true;
+      this.highlightButton(button);
+      logDebug("Automatic skip was not confirmed; highlighting for a manual click");
+    }, SKIP_VERIFICATION_DELAY_MS);
+  }
+
   private ensureInjectedStyle() {
     if (document.getElementById(INJECTED_STYLE_ID)) return;
 
@@ -636,8 +673,8 @@ class AutoSkipWatcher {
     style.id = INJECTED_STYLE_ID;
     style.textContent = `
 @keyframes autoskip-highlight-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.55); }
-  50% { box-shadow: 0 0 0 8px rgba(255, 0, 0, 0); }
+  0%, 100% { box-shadow: 0 0 12px 4px rgba(255, 0, 0, 0.55); }
+  50% { box-shadow: 0 0 24px 16px rgba(255, 0, 0, 0.15); }
 }`;
     (document.head ?? document.documentElement).appendChild(style);
   }
@@ -839,23 +876,32 @@ class AutoSkipWatcher {
   /** Fully synchronous: no setTimeout can let YouTube swap the node first. */
   private clickSkipButtonImmediately(button: HTMLElement) {
     try {
+      if (!this.isButtonReady(button)) return;
       const rect = button.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
+      // Real clicks target the hit-tested child, then bubble to the button.
+      const hit = document.elementFromPoint(x, y);
+      const target = hit && button.contains(hit) ? hit : button;
       const base = {
         bubbles: true,
         cancelable: true,
+        composed: true,
         view: window,
         clientX: x,
         clientY: y,
       };
 
-      button.dispatchEvent(new MouseEvent("mouseover", base));
-      button.dispatchEvent(
+      const pointer = { ...base, pointerId: 1, pointerType: "mouse", isPrimary: true };
+      target.dispatchEvent(new PointerEvent("pointerover", pointer));
+      target.dispatchEvent(new MouseEvent("mouseover", base));
+      target.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, button: 0, buttons: 1 }));
+      target.dispatchEvent(
         new MouseEvent("mousedown", { ...base, button: 0, buttons: 1 }),
       );
-      button.dispatchEvent(new MouseEvent("mouseup", { ...base, button: 0 }));
-      button.click();
+      target.dispatchEvent(new PointerEvent("pointerup", { ...pointer, button: 0, buttons: 0 }));
+      target.dispatchEvent(new MouseEvent("mouseup", { ...base, button: 0 }));
+      target.dispatchEvent(new PointerEvent("click", { ...pointer, button: 0, buttons: 0, detail: 1 }));
     } catch (error) {
       logWarn("Failed to click skip button", error);
       try {
@@ -985,8 +1031,10 @@ class AutoSkipWatcher {
 
       this.invalidatePlayerCache();
       if (!this.isAdCurrentlyPlaying()) {
+        logDebug("Ad ended after skip attempt");
         this.scheduleCounterIncrement();
       } else {
+        logDebug("Ad still present after skip attempt; another ad may have started");
         this.adCounterIncremented = false;
       }
     }, SKIP_VERIFICATION_DELAY_MS);

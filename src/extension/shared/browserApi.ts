@@ -5,12 +5,13 @@ export type ChromeLike = typeof chrome;
  * Works on Chrome/Edge/Brave/Opera (`chrome`) and Firefox (`browser`).
  */
 export const resolveBrowserApi = (): ChromeLike | undefined => {
-  if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-    return chrome;
-  }
-
+  // Firefox also exposes chrome.*, but browser.* provides promise-based APIs.
   if (typeof browser !== "undefined" && browser?.storage?.sync) {
     return browser as unknown as ChromeLike;
+  }
+
+  if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+    return chrome;
   }
 
   return undefined;

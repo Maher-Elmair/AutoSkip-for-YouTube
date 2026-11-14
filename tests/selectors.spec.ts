@@ -33,6 +33,9 @@ test("live YouTube ad controls match selectors and activate the extension", asyn
   page.on("console", (message) => logs.push(message.text()));
   try {
     const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
+    // Wait for the startup default write so it cannot overwrite the test settings.
+    await expect.poll(() => worker.evaluate("chrome.storage.sync.get(['blurAds']).then((result) => result.blurAds !== undefined)"),
+      { message: "Background default settings must be initialized" }).toBe(true);
     // Keep the real skip control available for observation instead of auto-clicking it.
     await worker.evaluate("chrome.storage.sync.set({ watcherEnabled: true, skipMode: 'off', muteAdSound: true, blurAds: true })");
     await page.goto(SAMPLE_VIDEO, { waitUntil: "domcontentloaded" });

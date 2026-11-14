@@ -17,10 +17,15 @@ export async function checkLiveSkipControl(
         const label = (element.getAttribute("aria-label") || element.textContent || "").replace(/\s+/g, " ").trim();
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
+        let effectiveOpacity = 1;
+        for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+          effectiveOpacity *= Number(getComputedStyle(ancestor).opacity);
+          if (effectiveOpacity <= 0.1) return false;
+        }
         return /^skip(?:\s+(?:ad|ads|advertisement))?$/i.test(label)
           && !element.hasAttribute("disabled") && element.getAttribute("aria-disabled") !== "true"
           && style.display !== "none" && style.visibility !== "hidden"
-          && Number(style.opacity) > 0.1 && style.pointerEvents !== "none"
+          && style.pointerEvents !== "none"
           && rect.width > 0 && rect.height > 0;
       });
       if (!button) return null;

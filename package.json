@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && vite build -c vite.content.config.ts && vite build -c vite.background.config.ts",
+    "build:firefox": "tsc -b && node scripts/build-firefox.mjs",
+    "test:firefox-build": "node --test tests/firefox-build.check.mjs",
     "build:dev": "vite build --mode development && vite build -c vite.content.config.ts --mode development && vite build -c vite.background.config.ts --mode development",
     "lint": "eslint .",
     "preview": "vite preview"

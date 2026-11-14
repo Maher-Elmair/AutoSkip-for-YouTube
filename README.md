@@ -185,6 +185,30 @@ After build:
 4. Click **Load unpacked**
 5. Select the `dist` folder
 
+### Build for Firefox
+
+```bash
+npm run build:firefox
+npm run test:firefox-build
+```
+
+The Firefox build is written to `dist-firefox`, separately from the Chromium
+build in `dist`. It uses a background script and does not request the Chromium-only
+`debugger` permission. Auto mode tries a synthetic click once per skip button.
+If the ad and button remain after verification, the button is highlighted for a
+manual click instead of repeated automatic attempts. Assist mode, muting, and
+blur do not require the debugger API.
+
+For a temporary installation, open `about:debugging#/runtime/this-firefox`, click
+**Load Temporary Add-on**, and select `dist-firefox/manifest.json`. The temporary
+installation lasts until Firefox restarts. Test playback and all skip modes in
+Firefox before publishing; build checks do not validate real YouTube behavior.
+
+The **Firefox build** GitHub Actions workflow builds and checks this package on
+pull requests, pushes to `main`, version tags, and manual runs. Download the
+`autoskip-firefox` artifact from the workflow run. This is an unsigned build,
+not a signed Firefox release.
+
 ### Run Selector Health Tests
 
 ```bash
@@ -193,6 +217,19 @@ npx playwright install --with-deps chromium
 npx playwright test
 
 ```
+
+The scheduled selector health workflow uses Playwright Chromium for every test;
+no separately installed Google Chrome is required. The live check discovers an
+English Skip control independently of the production class selectors, then
+requires those selectors and the ad state classes to match the observed player.
+It also verifies that the content script started and the blur overlay exists.
+
+If YouTube serves no skippable ad during the observation window, the live check
+fails with `INCONCLUSIVE` rather than claiming the selectors are healthy. Consent,
+network failures, and ad availability can also make the live check inconclusive.
+Failed runs include console output, a screenshot, and page HTML in the
+`selector-health-report` CI artifact. A failed run requires investigation; it does
+not by itself prove that YouTube renamed a class.
 
 ---
 

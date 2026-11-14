@@ -47,6 +47,7 @@ class AutoSkipWatcher {
   private intervalId: number | null = null;
   private isEnabled = DEFAULT_WATCHER_STATE;
   private readonly api = resolveBrowserApi();
+  private settingsReady = false;
 
   // Feature settings
   private muteAdSound = true;
@@ -55,6 +56,7 @@ class AutoSkipWatcher {
 
   // Auto mode: one in-flight trusted click at a time.
   private trustedClickPending = false;
+  private firefoxSkipAttempts = new WeakMap<HTMLElement, { assist: boolean }>();
 
   // Ad state
   private isAdPlaying = false;
@@ -62,8 +64,8 @@ class AutoSkipWatcher {
   private adCounterIncremented = false;
   private staleSignalSent = false;
 
-  // Mute state: a single boolean is enough, video.volume is never touched.
-  private wasMutedBeforeAd: boolean | null = null;
+  // Preserve each video independently, including detached or replaced elements.
+  private readonly mutedVideos = new Map<HTMLVideoElement, boolean>();
 
   // Counter throttling
   private pendingCounterUpdate = false;
@@ -77,20 +79,22 @@ class AutoSkipWatcher {
 
   private async bootstrap() {
     try {
-      await this.readInitialState();
-      await this.loadFeatureSettings();
+      window.addEventListener("beforeunload", () => this.cleanup(), {
+        once: true,
+      });
+      // Observe immediately, but do not modify playback before settings arrive.
+      this.startWatching();
+      await this.loadInitialSettings();
+      if (this.contextInvalidated) return;
+      this.settingsReady = true;
       this.listenToStorage();
 
-      if (document.readyState === "loading") {
-        document.addEventListener(
-          "DOMContentLoaded",
-          () => {
-            if (this.isEnabled) this.startWatching();
-          },
-          { once: true },
-        );
-      } else if (this.isEnabled) {
+      if (this.isEnabled) {
         this.startWatching();
+        this.syncAdMute();
+        this.tick();
+      } else {
+        this.stopWatching();
       }
 
       window.addEventListener("yt-navigate-finish", () => {
@@ -100,9 +104,6 @@ class AutoSkipWatcher {
         }
       });
 
-      window.addEventListener("beforeunload", () => this.cleanup(), {
-        once: true,
-      });
     } catch (error) {
       this.logError("Bootstrap failed", error);
     }
@@ -110,27 +111,19 @@ class AutoSkipWatcher {
 
   // ---------------------------------------------------------------- storage
 
-  private async readInitialState() {
-    if (!this.api?.storage?.sync) {
-      this.isEnabled = DEFAULT_WATCHER_STATE;
-      return;
-    }
-
-    const result = await storageGet("sync", [WATCHER_STORAGE_KEY]);
-    const stored = result[WATCHER_STORAGE_KEY];
-    this.isEnabled =
-      typeof stored === "boolean" ? stored : DEFAULT_WATCHER_STATE;
-    logDebug("Watcher initial state:", this.isEnabled);
-  }
-
-  private async loadFeatureSettings() {
+  private async loadInitialSettings() {
     if (!this.api?.storage?.sync) return;
 
     const result = await storageGet("sync", [
+      WATCHER_STORAGE_KEY,
       "muteAdSound",
       "blurAds",
       SKIP_MODE_KEY,
     ]);
+    const stored = result[WATCHER_STORAGE_KEY];
+    this.isEnabled =
+      typeof stored === "boolean" ? stored : DEFAULT_WATCHER_STATE;
+    logDebug("Watcher initial state:", this.isEnabled);
     if (typeof result.muteAdSound === "boolean") {
       this.muteAdSound = result.muteAdSound;
     }
@@ -173,6 +166,7 @@ class AutoSkipWatcher {
         const modeChange = changes[SKIP_MODE_KEY];
         if (modeChange && isSkipMode(modeChange.newValue)) {
           this.skipMode = modeChange.newValue;
+          this.firefoxSkipAttempts = new WeakMap();
           // Leftover assist highlight must not survive a mode switch.
           if (this.skipMode !== "assist") this.removeHighlight();
           if (this.isEnabled) this.tick();
@@ -205,9 +199,10 @@ class AutoSkipWatcher {
    * markup in other UI contexts (e.g. the Premium downloads manager), where
    * clicking or observing caused issue #2. A route check plus a real, loaded
    * <video> inside the player is required before the extension touches
-   * anything.
+   * anything. Audio may opt into the same route/player guard before loading,
+   * so an already identified ad is muted before metadata becomes available.
    */
-  private isActivePlaybackContext(): boolean {
+  private isActivePlaybackContext(requireLoadedVideo = true): boolean {
     const path = window.location.pathname;
     const isPlaybackRoute =
       path.startsWith("/watch") ||
@@ -223,6 +218,7 @@ class AutoSkipWatcher {
 
     const video = container.querySelector<HTMLVideoElement>("video");
     if (!video) return false;
+    if (!requireLoadedVideo) return true;
 
     return (
       video.readyState > 0 ||
@@ -251,12 +247,12 @@ class AutoSkipWatcher {
     this.cachedPlayer = null;
   }
 
-  /** Coalesces mutation bursts into at most one tick per animation frame. */
+  /** Coalesces mutation bursts without waiting for rendering in background tabs. */
   private scheduleTick() {
     if (this.tickScheduled || !this.isEnabled || this.contextInvalidated)
       return;
     this.tickScheduled = true;
-    window.requestAnimationFrame(() => {
+    queueMicrotask(() => {
       this.tickScheduled = false;
       if (!this.isEnabled || this.contextInvalidated) return;
       try {
@@ -271,22 +267,29 @@ class AutoSkipWatcher {
     if (this.observer || !this.isEnabled) return;
 
     // Scope the observer to the player when it exists; otherwise watch the
-    // body only until the player appears, then re-scope.
+    // document only until the player appears, then re-scope.
     this.invalidatePlayerCache();
     const player = this.getPlayer();
-    const root = player ?? document.body ?? document.documentElement;
-    if (!root) return;
+    const root = player ?? document;
 
     try {
       this.observer = new MutationObserver((mutations) => {
-        if (this.hasRelevantMutation(mutations)) this.scheduleTick();
+        if (this.hasRelevantMutation(mutations)) {
+          // Audio must not wait for a frame (which can be suspended in background tabs).
+          this.syncAdMute();
+          this.scheduleTick();
+        }
       });
+
+      document.addEventListener("loadedmetadata", this.syncAdMute, true);
+      document.addEventListener("play", this.syncAdMute, true);
+      document.addEventListener("volumechange", this.syncAdMute, true);
 
       this.observer.observe(root, {
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["class"],
+        attributeFilter: ["class", "style", "hidden", "disabled", "aria-disabled"],
       });
       this.observerScopedToPlayer = player !== null;
 
@@ -314,6 +317,8 @@ class AutoSkipWatcher {
   /** Ignore progress-bar and control animation churn inside the player. */
   private hasRelevantMutation(mutations: MutationRecord[]): boolean {
     const relevantSelector = [
+      PLAYER_SELECTOR,
+      "video",
       ...AD_SKIP_SELECTORS,
       ...SURVEY_SKIP_SELECTORS,
       ...OVERLAY_CLOSE_SELECTORS,
@@ -325,11 +330,13 @@ class AutoSkipWatcher {
         const target = mutation.target;
         return (
           target instanceof HTMLElement &&
-          (target.matches(PLAYER_SELECTOR) || target.matches(relevantSelector))
+          (target.matches(PLAYER_SELECTOR) ||
+            target.matches(relevantSelector) ||
+            target.querySelector(AD_INDICATOR_SELECTORS.join(",")) !== null)
         );
       }
 
-      return Array.from(mutation.addedNodes).some((node) => {
+      return [...mutation.addedNodes, ...mutation.removedNodes].some((node) => {
         if (!(node instanceof HTMLElement)) return false;
         return (
           node.matches(relevantSelector) ||
@@ -360,6 +367,9 @@ class AutoSkipWatcher {
 
   private stopWatching() {
     try {
+      document.removeEventListener("loadedmetadata", this.syncAdMute, true);
+      document.removeEventListener("play", this.syncAdMute, true);
+      document.removeEventListener("volumechange", this.syncAdMute, true);
       this.observer?.disconnect();
       this.observer = null;
       this.observerScopedToPlayer = false;
@@ -382,6 +392,7 @@ class AutoSkipWatcher {
   }
 
   private resetAdState() {
+    this.firefoxSkipAttempts = new WeakMap();
     this.isAdPlaying = false;
     this.adStartedAt = 0;
     this.adCounterIncremented = false;
@@ -400,7 +411,7 @@ class AutoSkipWatcher {
    * Skip-button clicking is NEVER gated on ad-detection state.
    */
   private tick() {
-    if (!this.isEnabled || this.contextInvalidated) return;
+    if (!this.settingsReady || !this.isEnabled || this.contextInvalidated) return;
 
     this.invalidatePlayerCache();
 
@@ -426,6 +437,7 @@ class AutoSkipWatcher {
       this.adCounterIncremented = false;
       this.staleSignalSent = false;
     } else if (!adPresent && this.isAdPlaying) {
+      this.firefoxSkipAttempts = new WeakMap();
       this.isAdPlaying = false;
       this.adStartedAt = 0;
       this.restoreVideoMute();
@@ -435,10 +447,8 @@ class AutoSkipWatcher {
 
     // Re-assert both features every tick while an ad runs: YouTube swaps
     // video elements and overlays mid-ad, and settings can change live.
+    this.syncAdMute();
     if (adPresent) {
-      if (this.muteAdSound) this.applyMuteFeature();
-      else this.restoreVideoMute();
-
       if (this.blurAds) this.applyBlurFeature();
       else this.removeBlurFeature();
     }
@@ -535,9 +545,14 @@ class AutoSkipWatcher {
       const target =
         preciseReady.closest<HTMLElement>('button, [role="button"]') ??
         preciseReady;
+      const firefoxAttempt = this.firefoxSkipAttempts.get(target);
+      if (firefoxAttempt) {
+        if (firefoxAttempt.assist) this.highlightButton(target);
+        return null;
+      }
       if (this.canClickAgain(target)) {
         this.requestTrustedClick(target);
-        logDebug("Video-ad skip button clicked");
+        logDebug("Attempting video-ad skip click");
         return "ad-skip";
       }
     }
@@ -580,11 +595,20 @@ class AutoSkipWatcher {
     const x = rect.left + rect.width / 2;
     const y = rect.top + rect.height / 2;
 
-    const sendMessage = this.api?.runtime?.sendMessage;
-    if (!sendMessage || this.trustedClickPending) {
+    const runtime = this.api?.runtime;
+    // Firefox has no debugger API: click the current node synchronously rather
+    // than waiting for an unsupported background request while ads swap nodes.
+    const isFirefox = runtime && "getBrowserInfo" in runtime;
+    const sendMessage = runtime?.sendMessage;
+    if (isFirefox) {
+      this.tryFirefoxClick(button);
+      return;
+    }
+    if (!sendMessage) {
       this.clickSkipButtonImmediately(button);
       return;
     }
+    if (this.trustedClickPending) return;
 
     this.trustedClickPending = true;
 
@@ -623,6 +647,25 @@ class AutoSkipWatcher {
 
   // ------------------------------------------------------ assist highlight
 
+  /** Firefox cannot create trusted input; offer manual help after one attempt. */
+  private tryFirefoxClick(button: HTMLElement) {
+    const attempt = { assist: false };
+    this.firefoxSkipAttempts.set(button, attempt);
+    this.clickSkipButtonImmediately(button);
+    window.setTimeout(() => {
+      if (this.firefoxSkipAttempts.get(button) !== attempt) return;
+      if (!this.isEnabled || this.contextInvalidated || this.skipMode !== "auto") return;
+      this.invalidatePlayerCache();
+      if (!this.isAdCurrentlyPlaying() || !this.getPlayer()?.contains(button) || !this.isButtonReady(button)) {
+        this.firefoxSkipAttempts.delete(button);
+        return;
+      }
+      attempt.assist = true;
+      this.highlightButton(button);
+      logDebug("Automatic skip was not confirmed; highlighting for a manual click");
+    }, SKIP_VERIFICATION_DELAY_MS);
+  }
+
   private ensureInjectedStyle() {
     if (document.getElementById(INJECTED_STYLE_ID)) return;
 
@@ -630,8 +673,8 @@ class AutoSkipWatcher {
     style.id = INJECTED_STYLE_ID;
     style.textContent = `
 @keyframes autoskip-highlight-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.55); }
-  50% { box-shadow: 0 0 0 8px rgba(255, 0, 0, 0); }
+  0%, 100% { box-shadow: 0 0 12px 4px rgba(255, 0, 0, 0.55); }
+  50% { box-shadow: 0 0 24px 16px rgba(255, 0, 0, 0.15); }
 }`;
     (document.head ?? document.documentElement).appendChild(style);
   }
@@ -833,23 +876,32 @@ class AutoSkipWatcher {
   /** Fully synchronous: no setTimeout can let YouTube swap the node first. */
   private clickSkipButtonImmediately(button: HTMLElement) {
     try {
+      if (!this.isButtonReady(button)) return;
       const rect = button.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
+      // Real clicks target the hit-tested child, then bubble to the button.
+      const hit = document.elementFromPoint(x, y);
+      const target = hit && button.contains(hit) ? hit : button;
       const base = {
         bubbles: true,
         cancelable: true,
+        composed: true,
         view: window,
         clientX: x,
         clientY: y,
       };
 
-      button.dispatchEvent(new MouseEvent("mouseover", base));
-      button.dispatchEvent(
+      const pointer = { ...base, pointerId: 1, pointerType: "mouse", isPrimary: true };
+      target.dispatchEvent(new PointerEvent("pointerover", pointer));
+      target.dispatchEvent(new MouseEvent("mouseover", base));
+      target.dispatchEvent(new PointerEvent("pointerdown", { ...pointer, button: 0, buttons: 1 }));
+      target.dispatchEvent(
         new MouseEvent("mousedown", { ...base, button: 0, buttons: 1 }),
       );
-      button.dispatchEvent(new MouseEvent("mouseup", { ...base, button: 0 }));
-      button.click();
+      target.dispatchEvent(new PointerEvent("pointerup", { ...pointer, button: 0, buttons: 0 }));
+      target.dispatchEvent(new MouseEvent("mouseup", { ...base, button: 0 }));
+      target.dispatchEvent(new PointerEvent("click", { ...pointer, button: 0, buttons: 0, detail: 1 }));
     } catch (error) {
       logWarn("Failed to click skip button", error);
       try {
@@ -862,29 +914,52 @@ class AutoSkipWatcher {
 
   // ------------------------------------------------------------------- mute
 
+  /** Keep audio independent of rendering and skip-button scanning. */
+  private readonly syncAdMute = () => {
+    if (!this.settingsReady || !this.isEnabled || this.contextInvalidated) return;
+    this.invalidatePlayerCache();
+    // Ad UI can outlive playback; only player state may control audio.
+    const player = this.isActivePlaybackContext(false)
+      ? document.querySelector<HTMLElement>(PLAYER_SELECTOR)
+      : null;
+    const videoAdPresent = AD_CLASS_NAMES.some((name) =>
+      player?.classList.contains(name),
+    );
+    if (this.muteAdSound && videoAdPresent) {
+      this.applyMuteFeature(player);
+    } else {
+      this.restoreVideoMute();
+    }
+  };
+
   /**
    * Some ad formats render into a different <video> than the main one, so
    * fall back to any video inside the player.
    */
-  private getVideoElement(): HTMLVideoElement | null {
-    const main = document.querySelector<HTMLVideoElement>(
+  private getVideoElement(player: HTMLElement): HTMLVideoElement | null {
+    const main = player.querySelector<HTMLVideoElement>(
       VIDEO_PLAYER_SELECTOR,
     );
     if (main) return main;
 
-    const player = this.getPlayer();
-    return player?.querySelector<HTMLVideoElement>("video") ?? null;
+    return player.querySelector<HTMLVideoElement>("video");
   }
 
-  private applyMuteFeature() {
+  private applyMuteFeature(player: HTMLElement | null) {
     try {
-      const video = this.getVideoElement();
+      if (!player) return;
+      const video = this.getVideoElement(player);
       if (!video) return;
 
-      if (this.wasMutedBeforeAd === null) {
-        this.wasMutedBeforeAd = video.muted;
+      for (const [previous, wasMuted] of this.mutedVideos) {
+        if (previous === video) continue;
+        previous.muted = wasMuted;
+        this.mutedVideos.delete(previous);
       }
-      video.muted = true;
+      if (!this.mutedVideos.has(video)) {
+        this.mutedVideos.set(video, video.muted);
+      }
+      if (!video.muted) video.muted = true;
     } catch (error) {
       logWarn("Failed to apply mute feature", error);
     }
@@ -893,13 +968,10 @@ class AutoSkipWatcher {
   /** Restores exactly the user's own mute choice; volume is never touched. */
   private restoreVideoMute() {
     try {
-      const video = this.getVideoElement();
-      if (!video || this.wasMutedBeforeAd === null) {
-        this.wasMutedBeforeAd = null;
-        return;
+      for (const [video, wasMuted] of this.mutedVideos) {
+        video.muted = wasMuted;
+        this.mutedVideos.delete(video);
       }
-      video.muted = this.wasMutedBeforeAd;
-      this.wasMutedBeforeAd = null;
     } catch (error) {
       logWarn("Failed to restore mute state", error);
     }
@@ -959,8 +1031,10 @@ class AutoSkipWatcher {
 
       this.invalidatePlayerCache();
       if (!this.isAdCurrentlyPlaying()) {
+        logDebug("Ad ended after skip attempt");
         this.scheduleCounterIncrement();
       } else {
+        logDebug("Ad still present after skip attempt; another ad may have started");
         this.adCounterIncremented = false;
       }
     }, SKIP_VERIFICATION_DELAY_MS);
